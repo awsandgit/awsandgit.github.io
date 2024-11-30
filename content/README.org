@@ -1,0 +1,21 @@
+#+title: Personal Knowledge Library
+#+author: Rohit Singh
+
+** Notes below:
+1. [[file:ansible.org][Ansible]]
+2. [[file:cloudwatch_agent.org][CloudWatch Agent]]
+3. [[file:node-pipeline.org][Old NodeJs CodePipeline]]
+4. [[file:kubenotes.org][Kubernetes EKS Basics]]
+5. [[file:kube2.org][Kubernetes Ingress examples]]
+6. [[file:appspec.org][Appspec examples]]
+7. [[file:buildspec.org][Buildspec examples]]
+8. [[file:jenkins.org][Alerts on Jenkins]]
+9. [[file:tagbasedpipeline.org][Tag based CodePipeline]]
+10. [[file:resizeEBS.org][Resize EBS]]
+11. [[file:s3fs.org][Mount S3]]
+12. [[file:ecs-jenkins.org][ECS jenkins pipeline]]
+13. [[file:cross-account-role.org][Cross account IAM role]]
+14. [[file:gitlabci.org][Gitlab CI/CD]]
+15. [[file:logIOSetup.org][Log.io setup]]
+16. [[file:logrotate.org][Logrotate Linux Utility]]
+17. [[file:command_list.org][Useful Command List]]

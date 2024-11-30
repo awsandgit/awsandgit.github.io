@@ -1,23 +1,26 @@
-#+title: My site
+#+title: Personal Knowledge Library
+** Introduction
+Hi there, and welcome to my Personal Knowledge Library! This is where I’ve gathered my notes, tips, and examples from my journey through DevOps, cloud infrastructure, and system configuration. It’s a space where I document what I’ve learned, so I can share it with others and have a reliable reference for myself.
 
-** Example conf
-+ Task 1
-+ Task 1
-+ Task 1
+Here, you’ll find practical insights on tools and workflows I use regularly, like Kubernetes, Ansible, Jenkins, and GitLab CI/CD. Whether it’s setting up pipelines, managing infrastructure, or troubleshooting tricky issues, these notes reflect the challenges I’ve faced and the solutions that worked for me.
 
-** Table
-|-----------+-----------|
-| Heading 1 | Heading 2 |
-| Item 1    | Item 2    |
-| Item 1    | Item 2    |
-| Item 1    | Item 2    |
-|-----------+-----------|
-** Codeblocks
-#+begin_src python
-num1 = 20
-num2 = 20
-sum = num1 + num2
-print(sum)
-#+end_src
-** Kong
-Here is kong [[file:kong.org][gateway]]
+Feel free to explore, learn, and hopefully find something here that helps you in your own work. This is a living resource, so it grows as I learn and discover new things. Thanks for stopping by!
+
+** Links to notes below:
+1. [[file:ansible.org][Ansible]]
+2. [[file:cloudwatch_agent.org][CloudWatch Agent]]
+3. [[file:node-pipeline.org][Old NodeJs CodePipeline]]
+4. [[file:kubenotes.org][Kubernetes EKS Basics]]
+5. [[file:kube2.org][Kubernetes Ingress examples]]
+6. [[file:appspec.org][Appspec examples]]
+7. [[file:buildspec.org][Buildspec examples]]
+8. [[file:jenkins.org][Alerts on Jenkins]]
+9. [[file:tagbasedpipeline.org][Tag based CodePipeline]]
+10. [[file:resizeEBS.org][Resize EBS]]
+11. [[file:s3fs.org][Mount S3]]
+12. [[file:ecs-jenkins.org][ECS jenkins pipeline]]
+13. [[file:cross-account-role.org][Cross account IAM role]]
+14. [[file:gitlabci.org][Gitlab CI/CD]]
+15. [[file:logIOSetup.org][Log.io setup]]
+16. [[file:logrotate.org][Logrotate Linux Utility]]
+17. [[file:command_list.org][Useful Command List]]

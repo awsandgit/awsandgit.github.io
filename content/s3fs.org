@@ -1,0 +1,240 @@
+* S3FS
+** Install
+- Official git repo: [[https://github.com/s3fs-fuse/s3fs-fuse]]
+- ON ubuntu
+#+begin_src bash
+sudo apt install -y build-essential libfuse-dev libcurl4-openssl-dev libxml2-dev pkg-config libssl-dev
+sudo apt install s3fs
+#+end_src
+
+- ON Amazon linux
+#+begin_src bash
+sudo amazon-linux-extras install epel
+sudo yum install s3fs-fuse
+#+end_src
+
+- From source latest version(for older linux)
+#+begin_src bash
+sudo apt install -y build-essential libfuse-dev libcurl4-openssl-dev libxml2-dev pkg-config libssl-dev
+wget https://github.com/s3fs-fuse/s3fs-fuse/archive/refs/tags/v1.93.zip
+unzip v1.93.zip
+cd s3fs-fuse-1.93/
+./autogen.sh
+./configure
+make
+make install
+source /etc/environment
+#+end_src
+
+** On AWS Console
+*** Create an S3 Bucket
+- make a bucket to store logs
+
+*** Create an IAM user for S3
+- give s3 access to this user using IAM policy
+- generate access and secret access keys for this user
+
+** ON EC2 where it is to be mounted
+#+begin_src bash
+#replace access and secret access keys with yours
+echo ACCESS_KEY_ID:SECRET_ACCESS_KEY > ${HOME}/.passwd-s3fs
+chmod 600 ${HOME}/.passwd-s3fs
+
+s3fs mybucket /path/to/mountpoint -o passwd_file=${HOME}/.passwd-s3fs
+
+#for a system-wide passwd file make a file
+touch /etc/passwd-s3fs
+#store your s3-user keys in this file in this format "ACCESS_KEY_ID:SECRET_ACCESS_KEY"
+chmod 600 /etc/passwd-s3fs
+
+#to debug use
+s3fs mybucket /path/to/mountpoint -o passwd_file=${HOME}/.passwd-s3fs -o dbglevel=info -f -o curldbg
+
+#check with the below command
+df -h
+#+end_src
+
+** To mount permanently
+- edit /etc/fstab
+#+begin_src bash
+s3fs#apachlog-101 /var/log/apache fuse _netdev,allow_other,use_path_request_style,passwd_file=/home/ubuntu/.passwd-s3fs 0 0
+#+end_src
+- use -o nonempty for folders that are full, make sure to take backup beforehand
+
+#+begin_src json
+{
+    "env": "dev",
+    "server": {
+        "auth": {
+            "url": "http://morepen-devapi.appskeeper.in//auth-service/",
+            "port": 4000,
+            "swaggerUserName": "user",
+            "swaggerPassword": "authpassword"
+        },
+        "activity": {
+            "url": "http://morepen-devapi.appskeeper.in/activity-service/",
+            "port": 4001,
+            "swaggerUserName": "user",
+            "swaggerPassword": "activitypassword"
+        },
+        "admin": {
+            "url": "http://morepen-devapi.appskeeper.in/admin-service/",
+            "port": 4002,
+            "swaggerUserName": "user",
+            "swaggerPassword": "adminpassword"
+        },
+        "user": {
+            "url": "http://morepen-devapi.appskeeper.in/user-service/",
+            "port": 4003,
+            "swaggerUserName": "user",
+            "swaggerPassword": "userpassword"
+        },
+        "upload": {
+            "url": "http://morepen-devapi.appskeeper.in/upload-service/",
+            "port": 4004,
+            "swaggerUserName": "user",
+            "swaggerPassword": "uploadpassword"
+        },
+        "log": {
+            "url": "http://morepen-devapi.appskeeper.in/log-service/",
+            "port": 4005,
+            "swaggerUserName": "user",
+            "swaggerPassword": "logpassword"
+        },
+        "user-activity": {
+            "url": "http://morepen-devapi.appskeeper.in/member-service/",
+            "port": 4006,
+            "swaggerUserName": "user",
+            "swaggerPassword": "memberpassword"
+        },
+        "notification": {
+            "url": "http://morepen-devapi.appskeeper.in/notification-service/",
+            "port": 4007,
+            "swaggerUserName": "user",
+            "swaggerPassword": "notificationpassword"
+        },
+        "provider": {
+            "url": "http://morepen-devapi.appskeeper.in/provider-service/",
+            "port": 4008,
+            "swaggerUserName": "user",
+            "swaggerPassword": "providerpassword"
+        }
+    },
+    "grpc": {
+        "configuration": {
+            "keepalive_timeout_ms": 1500
+        },
+        "auth": {
+            "server": "localhost:50051",
+            "client": "127.0.0.1:50051"
+        },
+        "user": {
+            "server": "localhost:50052",
+            "client": "127.0.0.1:50052"
+        },
+        "upload": {
+            "server": "localhost:50053",
+            "client": "127.0.0.1:50053"
+        },
+        "log": {
+            "server": "localhost:50054",
+            "client": "127.0.0.1:50054"
+        },
+        "phi": {
+            "server": "localhost:50055",
+            "client": "127.0.0.1:50055"
+        },
+        "notification": {
+            "server": "localhost:50056",
+            "client": "127.0.0.1:50056"
+        },
+        "activity": {
+            "server": "localhost:50057",
+            "client": "127.0.0.1:50057"
+        },
+        "admin": {
+            "server": "localhost:50058",
+            "client": "127.0.0.1:50058"
+        },
+        "provider": {
+            "server": "localhost:50059",
+            "client": "127.0.0.1:50059"
+        }
+    },
+    "directory": {
+        "static": {
+            "proto": {
+                "auth": {
+                    "server": "/../../../proto/auth.proto",
+                    "client": "/../../../../proto/auth.proto"
+                },
+                "user": {
+                    "server": "/../../../proto/user.proto",
+                    "client": "/../../../../proto/user.proto"
+                },
+                "upload": {
+                    "server": "/../../../proto/upload.proto",
+                    "client": "/../../../../proto/upload.proto"
+                },
+                "log": {
+                    "server": "/../../../proto/log.proto",
+                    "client": "/../../../../proto/log.proto"
+                },
+                "phi": {
+                    "server": "/../../../proto/member.proto",
+                    "client": "/../../../../proto/member.proto"
+                },
+                "notification": {
+                    "server": "/../../../proto/notification.proto",
+                    "client": "/../../../../proto/notification.proto"
+                },
+                "admin": {
+                    "server": "/../../../proto/admin.proto",
+                    "client": "/../../../../proto/admin.proto"
+                },
+                "activity": {
+                    "server": "/../../../proto/activity.proto",
+                    "client": "/../../../../proto/activity.proto"
+                },
+                "provider": {
+                    "server": "/../../../proto/provider.proto",
+                    "client": "/../../../../proto/provider.proto"
+                }
+            }
+        }
+    },
+    "cryptoSecret": "hJ4eYshgfyey12h1Ef45Uytr5iasbRe",
+    "cryptoAlgo": "aes-256-cbc",
+    "jwtSecret": "dtuerx",
+    "jwtAlgo": "HS256",
+    "kafka": {
+        "url": "localhost:9092"
+    },
+    "twilio": {
+        "TWILIO_ACCOUNT_SID": "",
+        "TWILIO_AUTH_TOKEN": "",
+        "TWILIO_PHONE_NO": ""
+    },
+    "redis": {
+        "host": "172.20.188.126",
+        "port": "6379",
+        "username": "",
+        "password": ""
+    },
+    "postgres": {
+            "user": "morepan-dev",
+            "host": "ac95c58a90d8142b6949a081b173da02-44f1be67caa4ab0d.elb.us-east-1.amazonaws.com",
+            "database": "morepan-dev",
+            "password": "MorepanDev",
+            "port": "5432",
+            "ssl": false
+    },
+    "logging": {
+        "REQUEST": true,
+        "CONSOLE": {
+            "SUCCESS": true,
+            "FAILURE": true
+        }
+    }
+}
+#+end_src

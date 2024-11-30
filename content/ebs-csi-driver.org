@@ -1,0 +1,192 @@
+#+Title: Setup EBS-CSI-Driver with GP3
+
+* EBS Driver Installation
+- Use helm chart or EKS Addon
+- Attach these two policies on the EKS-Nodes or ebs-csi-controller-sa (serviceAccount) used by the ebs-csi controller:
+  1. arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
+  2. custom kms policy
+#+begin_src json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:CreateGrant",
+                "kms:ListGrants",
+                "kms:RevokeGrant"
+            ],
+            "Resource": [
+                "arn:aws:kms:*:<account-id>:key/*"
+            ],
+            "Condition": {
+                "Bool": {
+                    "kms:GrantIsForAWSResource": "true"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:Encrypt",
+                "kms:Decrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+                "kms:DescribeKey"
+            ],
+            "Resource": [
+                "arn:aws:kms:*:<account-id>:key/*"
+            ]
+        }
+    ]
+}
+#+end_src
+* Storage Class Creation
+- create gp3 storage class and make it default
+#+begin_src yaml
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+allowVolumeExpansion: true
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  type: gp3
+#+end_src
+- check storage classes
+#+begin_src bash
+kubectl get sc
+#+end_src
+- If gp2 storage class is shown as default, remove default from gp2 class using the following command
+#+begin_src bash
+kubectl annotate sc gp2 storageclass.kubernetes.io/is-default-class-
+#+end_src
+
+* Testing
+- create a test-pod
+#+begin_src yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  namespace: default
+  name: ebs-gp3-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: gp3
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-gp3-in-tree
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx
+    volumeMounts:
+    - name: persistent-storage
+      mountPath: /usr/share/nginx/html
+  volumes:
+  - name: persistent-storage
+    persistentVolumeClaim:
+      claimName: ebs-gp3-claim
+
+#+end_src
+
+* Postgres Setup with pvc
+- create pvc
+#+begin_src yaml
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: postgres-pv-claim
+  namespace: morphine-dev
+  labels:
+    app: postgres
+spec:
+  storageClassName: ebs-sc
+  capacity:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+#+end_src
+
+- create configmap for environment vars
+#+begin_src yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-configuration
+  labels:
+    app: postgres
+data:
+  POSTGRES_DB: awesomedb
+  POSTGRES_USER: amazinguser
+  POSTGRES_PASSWORD: perfectpassword
+#+end_src
+
+- create postgres as a stateful set
+#+begin_src yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-statefulset
+  labels:
+    app: postgres
+spec:
+  serviceName: "postgres"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16
+        envFrom:
+        - configMapRef:
+            name: postgres-configuration
+        ports:
+        - containerPort: 5432
+          name: postgresdb
+        volumeMounts:
+        - name: pv-data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: pv-data
+        persistentVolumeClaim:
+          claimName: postgres-pv-claim
+#+end_src
+
+- create postgres service file
+#+begin_src yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  # annotations:
+  #   service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+  labels:
+    app: postgres
+spec:
+  ports:
+  - port: 5432
+    name: postgres
+  type: NodePort
+  # type: LoadBalancer
+  selector:
+    app: postgres
+#+end_src

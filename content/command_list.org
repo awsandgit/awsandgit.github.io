@@ -1,0 +1,421 @@
+#+title: Command list
+#+author:    Rohit Singh
+
+* 1 Kubectl
+** 1.1 Basic useful commands
+#+begin_src bash
+#resources name: po deploy svc ing nodes secrets
+kubectl get po -n node-dev
+kubectl describe po -n node-dev
+kubectl top pod-name -n node-dev
+kubectl logs -f pod-name -n node-dev
+kubectl cluster-info
+kubectl delete po pod-name -n node-dev
+# use -w to watch (changes reflected every 2s)
+kubectl get po -n node-dev -w
+#+end_src
+
+** 1.2 To create a secret using kubectl
+#+begin_src bash
+kubectl create secret generic my-secret --from-file=.env.production -n node-dev
+#+end_src
+
+** 1.3 To extract the contents from a secret
+#+begin_src bash
+kubectl get secret orderservice-secret -n node-dev -o jsonpath='{.data.\.env\.development}' | base64 -d
+kubectl get secret adminservice-secret -n node-staging -o jsonpath='{.data.\.env\.staging}' | base64 -d
+#+end_src
+
+** 1.4 To switch clusters if different contexts are present:
+#+begin_src bash
+#to list contexts
+kubectl config get-contexts
+kubectl config use-context arn:aws:eks:us-east-1:111222333444:cluster/first-eks-cluster
+#+end_src
+
+* 2 AWS CLI
+** 2.1 Basics
++ To configure for the first time on default profile:
+#+begin_src bash
+aws configure
+#check the identity of the user
+aws sts get-caller-identity
+#to configure a user in a different profile
+aws configure --profile profile-name
+#to use this profile just add --profile profile-name at the end of aws cli commands
+aws sts get-caller-identity --profile profile-name
+#to list all configured profiles
+aws configure list-profiles
+#+end_src
++ For help on terminal:
+#+begin_src bash
+aws help
+aws s3 help
+aws s3 cp help
+aws eks describe-cluster help
+#by doing this you can figure out the command you need to do the action you want instead of just googling
+#+end_src
+
+** 2.2 EKS related commands
++ Find cluster-names in a region
+#+begin_src bash
+aws eks list-clusters --region us-east-1
+# generate kubeconfig file and set context to the specified cluster
+aws eks update-kubeconfig --name cluster-name --region us-east-1
+#+end_src
+
+** 2.3 Assume roles
++ Use aws sts command:
+#+begin_src bash
+aws sts assume-role --role-arn "arn:aws:iam::591190141663:role/my-role" --role-session-name mysession
+#+end_src
+
++ for use in scripts:
+#+begin_src bash
+#Replace $ROLEARN with your role
+DATA=$(aws sts assume-role --role-arn "$ROLEARN" --role-session-name admin --duration 900)
+#the above generated creds will only be valid for 15minutes(900 seconds)
+# 15minutes < duration < 12hours
+export AWS_ACCESS_KEY_ID="$(echo "$DATA" | jq -r .Credentials.AccessKeyId)"
+export AWS_SECRET_ACCESS_KEY="$(echo "$DATA" | jq -r .Credentials.SecretAccessKey)"
+export AWS_SESSION_TOKEN="$(echo "$DATA" | jq -r .Credentials.SessionToken)"
+#you can start using commands that the assumed role is allowed to execute, e.g,
+aws iam list-users
+#+end_src
+
+** 2.4 S3 related commands
++ List Buckets
+#+begin_src bash
+aws s3 ls
+#list a bucket contents:
+aws s3 ls s3://myUniqueBucket/
+#+end_src
+
++ Copy from and to Bucket
+#+begin_src bash
+#aws s3 cp <source> <destination>
+aws s3 cp myLocalfile.jpeg s3://myBucket101/myFolderthatdoesnotExist/
+#to copy a folder use recursive flag
+aws s3 cp --recursive s3://myBucket101/ ./myLocalfolder/
+#use sync to sync-new-content only from source to destination
+aws s3 sync myLocalfolder/ s3://myBucket101/
+#use --delete to delete files from destination that don't exist in the source
+aws s3 sync myLocalfolder/* s3://myBucket101/ --delete
+#+end_src
+
++ To create a bucket
+#+begin_src bash
+aws s3 mb s3://myUniqueBucket --region us-east-1
+#+end_src
+
++ To delete a bucket:
+#+begin_src bash
+#You will need to empty the bucket first
+aws s3 rm --recursive s3://myUniqueBucket/
+#then delete the bucket
+aws s3 rb s3://myUniqueBucket
+#+end_src
+
++ enable versioning:
+#+begin_src bash
+aws s3api put-bucket-versioning --bucket myUniqueBucket --region us-east-1
+#+end_src
+** 2.5 Cloudfront related commands
++ List Distributions
+#+begin_src bash
+aws cloudfront list-distributions
+#+end_src
++ Create Invalidation
+#+begin_src bash
+aws cloudfront create-invalidation --distribution-id=E3TDMB9X1YF04E --paths '/*'
+#+end_src
+** 2.6 IAM related commands
+- List Profiles
+#+begin_src bash
+aws iam list-instance-profiles
+#+end_src
+- Delete an instance profile by its name
+#+begin_src bash
+aws iam delete-instance-profile --instance-profile-name ssm-profile --profile your-iam-profile
+#+end_src
+
+
+* 3 EKSCTL Upgrade EKS
+** Upgrade eksctl itself
+#+begin_src bash
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin
+eksctl version
+#+end_src
+
+** Check for deprecated apiVersion using Kubent
+1. install
+#+begin_src bash
+sh -c "$(curl -sSL https://git.io/install-kubent)"
+#+end_src
+2. Run
+#+begin_src
+kubent
+#+end_src
+** Cluster config
+#+begin_src yaml
+---
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: cluster-preproduction
+  region: eu-west-3
+  version: '1.24'
+privateCluster:
+  enabled: false
+iam:
+  vpcResourceControllerPolicy: true
+  withOIDC: false
+################################################Autoscaling clusters###########################################################
+nodeGroups:
+- name: NodeGoup-1
+  instanceType: c5.xlarge
+  volumeSize: 60
+  volumeType: gp2
+  volumeEncrypted: true
+  disableIMDSv1: true
+  minSize: 2
+  maxSize: 2
+  desiredCapacity: 2
+  privateNetworking: true
+  labels: {role: worker-node}
+  kubeletExtraConfig:
+      kubeReserved:
+          cpu: "300m"
+          memory: "300Mi"
+          ephemeral-storage: "1Gi"
+      kubeReservedCgroup: "/kube-reserved"
+      systemReserved:
+          cpu: "300m"
+          memory: "300Mi"
+          ephemeral-storage: "1Gi"
+      evictionHard:
+          memory.available:  "200Mi"
+          nodefs.available: "10%"
+      featureGates:
+          RotateKubeletServerCertificate: true # has to be enabled, otherwise it will be disabled
+  iam:
+    attachPolicyARNs:
+    - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+    - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+    - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+    - arn:aws:iam::aws:policy/AmazonS3FullAccess
+    - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore  #you can create policy specfic for bucket created
+    withAddonPolicies:
+      autoScaler: true
+      ebs: true
+      # cloudWatch: true
+  ssh:
+    allow: true
+    publicKeyName: 'myapp-preprod'
+  tags:
+    k8s.io/cluster-autoscaler/enabled: 'true'
+  availabilityZones: ['eu-west-3b','eu-west-3c','eu-west-3a']
+##############################################Enable Logging###########################################################
+#cloudWatch:
+# clusterLogging:
+#   enableTypes: ["audit", "authenticator", "scheduler", "api", "controllerManager"]
+vpc:
+  id: "vpc-4390fccdefa036a8a" # This is the id of your VPC in AWS.
+  subnets: # In this section, include all the subnets of your AWS VPC. Follow the example format below.
+    private: # Private subnet details. Add an entry for each region of your VPC.
+      eu-west-3a: { id: subnet-0cdjf9349u34j3f } # Change to be the subnet region and subnet id.
+      eu-west-3b: { id: subnet-010dd34u394fj3j } # Change to be the subnet region and subnet id.
+      eu-west-3c: { id: subnet-0438u4939fdfdf9 } # Change to be the subnet region and subnet id.
+    public: # Public subnet details. Add an entry for each region of your VPC.
+      eu-west-3a: { id: subnet-034u3498jfdfjddjf } # Change to be the subnet region and subnet id.
+      eu-west-3b: { id: subnet-034u39jfjfkdjfdk } # Change to be the subnet region and subnet id.
+      eu-west-3c: { id: subnet-03rjfd9fjdfkjdkfd } # Change to be the subnet region and subnet id.
+#+end_src
+
+** Upgrade Control Plane
+#+begin_src bash
+#change version in config and then run below
+#eg 1.24 to 1.25
+eksctl upgrade cluster -f config.yaml
+# pass --approve to really do it
+#+end_src
++ Upgrade the Control Plane from 1.24 to 1.29 step by step first
+
+** Upgrade Core Components
++ Perform this after upgrading the control plane to latest version
+#+begin_src bash
+eksctl utils update-aws-node --cluster Clustername --approve
+eksctl utils update-kube-proxy --cluster Clustername --approve
+eksctl utils update-core-dns --cluster Clustername --approve
+#+end_src
+
+** Upgrade nodegroup
++ Edit config and add another nodegroup like this:
+  #+begin_src yaml
+  ---
+  apiVersion: eksctl.io/v1alpha5
+  kind: ClusterConfig
+  metadata:
+    name: cluster-preproduction
+    region: eu-west-3
+    version: '1.29'
+  privateCluster:
+    enabled: false
+  iam:
+    vpcResourceControllerPolicy: true
+    withOIDC: false
+  ################################################Autoscaling clusters###########################################################
+  nodeGroups:
+  - name: NodeGoup-1.29
+    instanceType: c5.xlarge
+    volumeSize: 60
+    volumeType: gp2
+    volumeEncrypted: true
+    disableIMDSv1: true
+    minSize: 2
+    maxSize: 2
+    desiredCapacity: 2
+    privateNetworking: true
+    labels: {role: worker-node}
+    kubeletExtraConfig:
+        kubeReserved:
+            cpu: "300m"
+            memory: "300Mi"
+            ephemeral-storage: "1Gi"
+        kubeReservedCgroup: "/kube-reserved"
+        systemReserved:
+            cpu: "300m"
+            memory: "300Mi"
+            ephemeral-storage: "1Gi"
+        evictionHard:
+            memory.available:  "200Mi"
+            nodefs.available: "10%"
+        featureGates:
+            RotateKubeletServerCertificate: true # has to be enabled, otherwise it will be disabled
+    iam:
+      attachPolicyARNs:
+      - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+      - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+      - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore  #you can create policy specfic for bucket created
+      withAddonPolicies:
+        autoScaler: true
+        ebs: true
+        # cloudWatch: true
+    ssh:
+      allow: true
+      publicKeyName: 'myapp-preprod'
+    tags:
+      k8s.io/cluster-autoscaler/enabled: 'true'
+    availabilityZones: ['eu-west-3b','eu-west-3c','eu-west-3a']
+  - name: NodeGoup-1
+    instanceType: c5.xlarge
+    volumeSize: 60
+    volumeType: gp2
+    volumeEncrypted: true
+    disableIMDSv1: true
+    minSize: 2
+    maxSize: 2
+    desiredCapacity: 2
+    privateNetworking: true
+    labels: {role: worker-node}
+    kubeletExtraConfig:
+        kubeReserved:
+            cpu: "300m"
+            memory: "300Mi"
+            ephemeral-storage: "1Gi"
+        kubeReservedCgroup: "/kube-reserved"
+        systemReserved:
+            cpu: "300m"
+            memory: "300Mi"
+            ephemeral-storage: "1Gi"
+        evictionHard:
+            memory.available:  "200Mi"
+            nodefs.available: "10%"
+        featureGates:
+            RotateKubeletServerCertificate: true # has to be enabled, otherwise it will be disabled
+    iam:
+      attachPolicyARNs:
+      - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+      - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+      - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore  #you can create policy specfic for bucket created
+      withAddonPolicies:
+        autoScaler: true
+        ebs: true
+        # cloudWatch: true
+    ssh:
+      allow: true
+      publicKeyName: 'myapp-preprod'
+    tags:
+      k8s.io/cluster-autoscaler/enabled: 'true'
+    availabilityZones: ['eu-west-3b','eu-west-3c','eu-west-3a']
+  ##############################################Enable Logging###########################################################
+  #cloudWatch:
+  # clusterLogging:
+  #   enableTypes: ["audit", "authenticator", "scheduler", "api", "controllerManager"]
+  vpc:
+    id: "vpc-4390fccdefa036a8a" # This is the id of your VPC in AWS.
+    subnets: # In this section, include all the subnets of your AWS VPC. Follow the example format below.
+      private: # Private subnet details. Add an entry for each region of your VPC.
+        eu-west-3a: { id: subnet-0cdjf9349u34j3f } # Change to be the subnet region and subnet id.
+        eu-west-3b: { id: subnet-010dd34u394fj3j } # Change to be the subnet region and subnet id.
+        eu-west-3c: { id: subnet-0438u4939fdfdf9 } # Change to be the subnet region and subnet id.
+      public: # Public subnet details. Add an entry for each region of your VPC.
+        eu-west-3a: { id: subnet-034u3498jfdfjddjf } # Change to be the subnet region and subnet id.
+        eu-west-3b: { id: subnet-034u39jfjfkdjfdk } # Change to be the subnet region and subnet id.
+        eu-west-3c: { id: subnet-03rjfd9fjdfkjdkfd } # Change to be the subnet region and subnet id.
+  #+end_src
+
++ After editing run this:
+#+begin_src bash
+eksctl create nodegroup -f config.yaml
+#delete old nodegroup from config and run:
+eksctl delete nodegroup -f config.yaml --only-missing
+#+end_src
+*** For a managed nodegroup
+#+begin_src bash
+eksctl upgrade nodegroup --cluster clustername --name managed --kubernetes-version 1.26
+#+end_src
+
+** Change image version in ClusterAutoScaler Deployment
++ Edit the deployment using:
+  #+begin_src bash
+  kubectl edit deploy cluster-autoscaler -n kube-sytem
+  #replace registry.k8s.io/autoscaling/cluster-autoscaler:v1.24.n with registry.k8s.io/autoscaling/cluster-autoscaler:v1.29.2
+  #+end_src
+
+* 4 OpenVpn3
+- session-list
+#+begin_src bash
+openvpn3 sessions-list
+#+end_src
+- connect using file
+#+begin_src bash
+openvpn3 session-start --config dev.ovpn
+#+end_src
+- disconnect using path
+#+begin_src bash
+openvpn3 session-manage --path /net/openvpn/v3/sessions/1f0bb09cs0690s4dcbs8ee2s411eb7da09bd --disconnect
+#+end_src
+* 5 Pass
+#+begin_src bash
+#Initialize
+pass init gpgid
+#Add password
+pass insert secretname
+pass insert -m folder/secretname
+#Copy to Clipboard
+pass -c secretname
+#print
+pass secretname
+#edit
+pass edit secretname
+#initialize as git repo
+pass git init
+#push and pull to remote after adding remote url
+pass git push
+#+end_src
