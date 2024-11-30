@@ -1,11 +1,6 @@
 #+title: GitlabCI
 #+Author: Rohit Singh
 
-* Table of Contents :toc:
-- [[#cicd-variables][CI/CD Variables]]
-- [[#yml-files][YML Files]]
-  - [[#monolithic-gitlab-ciyml][Monolithic .gitlab-ci.yml]]
-  - [[#eks-gitlab-ciyml][EKS .gitlab-ci.yml]]
 
 * CI/CD Variables
 - File Type

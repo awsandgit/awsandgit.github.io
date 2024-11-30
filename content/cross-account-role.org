@@ -1,12 +1,5 @@
 #+title: Cross Account Role
 
-* Table of Contents :toc:
-- [[#overview][Overview]]
-  - [[#aws-accounts][AWS Accounts]]
-  - [[#iam-roles][IAM Roles]]
-- [[#using-the-role][Using the role]]
-  - [[#through-aws-cli][Through AWS CLI]]
-
 * Overview
 Create an IAM role in AWS Account A that allows access to its resources from another AWS Account B.
 ** AWS Accounts
@@ -42,8 +35,6 @@ Create an IAM role in AWS Account A that allows access to its resources from ano
 #+end_src
 - Note down the ARN of this role
   - It will be something like: arn:aws:iam::591190141663:role/admin-cross-account-role
-- Sample screenshot below
-[[attachment:_20240130_232202Screenshot from 2024-01-30 23-20-05.png]]
 
 *** In Account B
 - Create an EC2

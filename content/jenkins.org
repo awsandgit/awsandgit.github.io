@@ -33,12 +33,9 @@ systemctl status jenkins
 ** Requirements
 + SMTP Server configured and running, OR,
 + A 2FA enabled Gmail Account, OR,
-+ [[id:9a137ec1-c9a2-4d9f-92ff-cb23bd778152][AWS SES]]
++ SES
 
 ** Using AWS SES with Jenkins for alert transmission:
-:PROPERTIES:
-:ID:       9a137ec1-c9a2-4d9f-92ff-cb23bd778152
-:END:
 - Both the sender and receivers email-ids must be verified on SES.
 *** On AWS console
 + Go to SES dashboard
