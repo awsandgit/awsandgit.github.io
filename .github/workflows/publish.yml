@@ -1,29 +1,50 @@
-name: Publish to GitHub Pages
+name: Publish Org Site to GitHub Pages
 
 on:
   push:
     branches:
-      - master
+      - master # Trigger on pushes to the 'master' branch
+ # workflow_dispatch: # Allow manual trigger from the Actions tab
+
 permissions:
   contents: read
   pages: write
   id-token: write
 
 jobs:
-  publish:
+  build:
+    name: Build Org Site
     runs-on: ubuntu-latest
-    steps:
-      - name: Check out
-        uses: actions/checkout@v1
 
+    steps:
+      # Check out the repository
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Install Emacs
       - name: Install Emacs
         run: sudo apt install emacs-nox --yes
 
+      # Run the build script
       - name: Build the site
         run: ./build.sh
 
-      - name: Publish generated content to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@4.1.4
+      # Upload the generated site as an artifact
+      - name: Upload build artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          branch: gh-pages
-          folder: public
+          path: ./public # The folder with the generated HTML files
+
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build # Ensure this job runs after the build job
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # Deploy the generated site to GitHub Pages
+      - name: Deploy site
+        id: deployment
+        uses: actions/deploy-pages@v4
