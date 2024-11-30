@@ -1,0 +1,23 @@
+#+title: My site
+
+** Example conf
++ Task 1
++ Task 1
++ Task 1
+
+** Table
+|-----------+-----------|
+| Heading 1 | Heading 2 |
+| Item 1    | Item 2    |
+| Item 1    | Item 2    |
+| Item 1    | Item 2    |
+|-----------+-----------|
+** Codeblocks
+#+begin_src python
+num1 = 20
+num2 = 20
+sum = num1 + num2
+print(sum)
+#+end_src
+** Kong
+Here is kong [[file:kong.org][gateway]]
