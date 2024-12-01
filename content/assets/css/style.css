@@ -1,0 +1,20 @@
+:root {
+  --accent: #9944ff;
+}
+/* pre[class^="src-"] { */
+/*     padding: 1em; */
+/*     border-radius: 5px; */
+/*     font-size: 0.9em; */
+/* } */
+/* .hljs-copy { */
+/*     float: right; */
+/*     cursor: pointer; */
+/* } */
+/* .org-src-container{ */
+/*     background:#1a1b26; */
+/*     color:#9aa5ce ; */
+/* } */
+
+.hljs-copy-wrapper{
+    background: rgb(26, 27, 38);
+}

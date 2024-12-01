@@ -1,4 +1,4 @@
-#+title: Cloudwatch Agent
+* Cloudwatch Agent
 
 
 ** Install cloudwatch agent

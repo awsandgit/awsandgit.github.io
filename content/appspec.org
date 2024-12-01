@@ -1,4 +1,4 @@
-#+title: Appspec
+* Appspec
 
 ** Appspec for CodeDeploy Agent
 - Scripts depend on the type of project to be deployed

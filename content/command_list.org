@@ -1,5 +1,4 @@
-#+title: Command list
-#+author:    Rohit Singh
+* Command list
 
 * 1 Kubectl
 ** 1.1 Basic useful commands

@@ -1,5 +1,4 @@
-#+title: Kubernetes Ingress
-#+Author: Rohit Singh
+* Kubernetes Ingress
 
 ** Simple Ingress
 #+begin_src yaml

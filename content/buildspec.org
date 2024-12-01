@@ -1,4 +1,4 @@
-#+title: Buildspec
+* Buildspec
 
 ** Buildspec.yml
 - AWS CodeBuild needs this buildspec file to know how to build your project.

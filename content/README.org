@@ -1,5 +1,4 @@
-#+title: Personal Knowledge Library
-#+author: Rohit Singh
+* Personal Knowledge Library
 
 ** Notes below:
 1. [[file:ansible.org][Ansible]]

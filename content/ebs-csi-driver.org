@@ -1,4 +1,4 @@
-#+Title: Setup EBS-CSI-Driver with GP3
+* Setup EBS-CSI-Driver with GP3
 
 * EBS Driver Installation
 - Use helm chart or EKS Addon

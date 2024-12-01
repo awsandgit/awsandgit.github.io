@@ -1,4 +1,4 @@
-#+title: Personal Knowledge Library
+* Personal Knowledge Library
 ** Introduction
 Hi there, and welcome to my Personal Knowledge Library! This is where I’ve gathered my notes, tips, and examples from my journey through DevOps, cloud infrastructure, and system configuration. It’s a space where I document what I’ve learned, so I can share it with others and have a reliable reference for myself.
 

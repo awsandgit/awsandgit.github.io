@@ -1,6 +1,4 @@
-#+title: GitlabCI
-#+Author: Rohit Singh
-
+* GitlabCI
 
 * CI/CD Variables
 - File Type

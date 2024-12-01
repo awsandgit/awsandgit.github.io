@@ -1,4 +1,4 @@
-#+title: Node Pipeline
+* Node Pipeline
 
 
 * Preparation for creating a pipeline to auto-deploy a nodejs-application ec2-instances

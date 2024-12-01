@@ -1,15 +1,15 @@
-#+title: Ansible
+* Ansible
 
-* Config Management with Ansible
+** Config Management with Ansible
 + simple to use than chef,puppet or saltstack
 + can make changes to thousands of servers at once.
 + scaling new servers becomes easier with ansible
 + keeps records of all changes
 
-* Infrastructure as Code
+** Infrastructure as Code
 + for transparency and uniformity
 
-* Ansible
+** Ansible
 + uses push approach
 + use YAML(yet another markup language)
 + uses openssh and winRM
@@ -25,7 +25,7 @@
 
 + https://docs.ansible.com/ansible/latest/installation_guide/installation_distros.html#installing-ansible-on-ubuntu
 
-** Inventory creation on ansible
+*** Inventory creation on ansible
 + In /etc/ansible/hosts
      [localsever]
       localhost
@@ -41,7 +41,7 @@
       public_ip1
       public_ip2
 
-** ansible commands
+*** ansible commands
 - ansible -m ping localserver
 - ansible-playbook node.yaml
 - ansible-galaxy -h
@@ -49,7 +49,7 @@
 
 
 
-*** YAML format
+**** YAML format
 #+begin_src yaml
 ---
 - hosts: all

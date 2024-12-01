@@ -1,4 +1,4 @@
-#+title: Resize Ebs
+* Resize Ebs
 
 ** Modify Volume on AWS
 - On AWS EC2 console

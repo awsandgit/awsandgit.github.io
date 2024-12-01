@@ -6,7 +6,7 @@
 
 ** On the AWS EventBridge Console:
 - Disable the default codepipeline rule on AWS EventBridge Console
-- [[file:./images/pathbased/eventbridge4_resized.png]]
+- [[file:./assets/images/pathbased/eventbridge4_resized.png]]
 - Create a new AWS EventBridge Rule using the below code:
 #+begin_src json
 {
@@ -23,13 +23,13 @@
 #+end_src
 - Change the region code, accountID and repositoryName accordingly
 - referenceName includes the tags that are allowed.
-- [[file:./images/pathbased/eventbridge1_resized.png]]
+- [[file:./assets/images/pathbased/eventbridge1_resized.png]]
 - select other and leave the sample as it is
-- [[file:./images/pathbased/eventbridge2_resized.png]]
+- [[file:./assets/images/pathbased/eventbridge2_resized.png]]
 - select custom json and paste the above provided code with your changes
-- [[file:./images/pathbased/eventbridge3_resized.png]]
+- [[file:./assets/images/pathbased/eventbridge3_resized.png]]
 - Select AWS Service and find codepipeline and use AWS code-pipeline ARN in the target
-- [[file:./images/pathbased/eventbridge5_resized.png]]
+- [[file:./assets/images/pathbased/eventbridge5_resized.png]]
 
 
 ** Create a tag using git cli
