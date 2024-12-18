@@ -67,34 +67,34 @@ arn:aws:iam::aws:policy/AmazonS3FullAccess
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: upload-svc
+  name: test-svc
   labels:
-    app: upload-svc
-  namespace: morepen-prod
+    app: test-svc
+  namespace: test-prod
 spec:
   replicas: 1
   revisionHistoryLimit: 4
   selector:
     matchLabels:
-      app: upload-svc
+      app: test-svc
   template:
     metadata:
       labels:
-        app: upload-svc
+        app: test-svc
     spec:
       serviceAccountName: my-service-account
       imagePullSecrets:
-      - name: morepen-rohit
+      - name: test-secret
       terminationGracePeriodSeconds: 20
       containers:
-      - name: upload-svc
+      - name: test-svc
         image: {{DOCKER_IMAGE}}
         imagePullPolicy: Always
         ports:
         - containerPort: 4004
-          name: upload-api
+          name: test-api
         - containerPort: 50054
-          name: upload-grpc
+          name: test-grpc
         resources:
           limits:
             cpu: "100m"
