@@ -24,4 +24,5 @@ Feel free to explore, learn, and hopefully find something here that helps you in
 15. [[file:logIOSetup.org][Log.io setup]]
 16. [[file:logrotate.org][Logrotate Linux Utility]]
 17. [[file:command_list.org][Useful Command List]]
-18. [[file:eks-access-and-pod-identity.org][EKS Access and Pod Identity Association]]
+18. [[file:command_list.org::3 eks-upgrade-steps][Upgrade EKS using eksctl]]
+19. [[file:eks-access-and-pod-identity.org][EKS Access and Pod Identity Association]]

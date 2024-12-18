@@ -139,7 +139,7 @@ aws iam delete-instance-profile --instance-profile-name ssm-profile --profile yo
 #+end_src
 
 
-* 3 EKSCTL Upgrade EKS
+* 3 eks-upgrade-steps
 ** Upgrade eksctl itself
 #+begin_src bash
 curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
