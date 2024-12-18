@@ -1,0 +1,115 @@
+* EKS Cluster
+** EKS Access Entry
+There are now three types of access entries to access the EKS cluster
+*** ConfigMap
+Access to cluster is managed via aws-auth configmap in kube-system namespace, this is now deprecated.
+- https://docs.aws.amazon.com/eks/latest/userguide/auth-configmap.html
+*** API and configmap
+Only used as transition between configmap and API
+aws-auth configmap exists but all entries in the configmap are copied to access entries
+*** API
+This is now the recommended method to access EKS by AWS
+**** Access Policies List
+1. AmazonEKSClusterAdminPolicy – cluster-admin
+2. AmazonEKSAdminPolicy – admin
+3. AmazonEKSEditPolicy – edit
+4. AmazonEKSViewPolicy – view
+**** IAM entity
+IAM entity is an IAM role or IAM user to which one of these polices is attached to.
+**** Create an access entry
+1. Go to EKS Console
+2. Select your EKS Cluster and go to Access Tab and scroll down to IAM access entry
+3. Select "Create EKS entry"
+4. Add your IAM role or User that you want to give access to, in the next step, select the EKS access policy that you want.
+   For example: AmazonEKSClusterAdminPolicy for cluster-wide admin access
+*** Reference
+- https://aws.amazon.com/blogs/containers/a-deep-dive-into-simplified-amazon-eks-access-management-controls/
+- https://docs.aws.amazon.com/eks/latest/userguide/grant-k8s-access.html
+
+
+** EKS Pod Identity Association
+*** Description
+EKS Pod Identities provide the ability to manage credentials for your applications, similar to the way that Amazon EC2 instance profiles provide credentials to Amazon EC2 instances. Instead of creating and distributing your AWS credentials to the containers or using the Amazon EC2 instance’s role, you associate an IAM role with a Kubernetes service account and configure your Pods to use the service account.
+*** Create a service account
+#+begin_src bash
+kubectl create sa my-sa -n my-ns
+#+end_src
+*** Create an IAM Role
+1. Go to AWS console and create an IAM role
+2. Select EKS:Pods when asked for which service or
+   1. Add a custom trust policy and paste the below json
+#+begin_src yaml
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": [
+                    "pods.eks.amazonaws.com"
+                ]
+            },
+            "Action": [
+                "sts:AssumeRole",
+                "sts:TagSession"
+            ]
+        }
+    ]
+}
+#+end_src
+3. Add any IAM policy that your application needs
+   1. For example, if it needs S3 Access, you can add the below or a more restrictive custom policy
+#+begin_src json
+arn:aws:iam::aws:policy/AmazonS3FullAccess
+#+end_src
+4. Use this serviceAccount in the deployment.yaml to finaly use this
+#+begin_src yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: upload-svc
+  labels:
+    app: upload-svc
+  namespace: morepen-prod
+spec:
+  replicas: 1
+  revisionHistoryLimit: 4
+  selector:
+    matchLabels:
+      app: upload-svc
+  template:
+    metadata:
+      labels:
+        app: upload-svc
+    spec:
+      serviceAccountName: my-service-account
+      imagePullSecrets:
+      - name: morepen-rohit
+      terminationGracePeriodSeconds: 20
+      containers:
+      - name: upload-svc
+        image: {{DOCKER_IMAGE}}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4004
+          name: upload-api
+        - containerPort: 50054
+          name: upload-grpc
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "200Mi"
+          requests:
+            cpu: "70m"
+            memory: "180Mi"
+        readinessProbe:
+          tcpSocket:
+            port: 4004
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 4004
+          initialDelaySeconds: 10
+          periodSeconds: 15
+#+end_src

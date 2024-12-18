@@ -418,3 +418,12 @@ pass git init
 #push and pull to remote after adding remote url
 pass git push
 #+end_src
+* 6 Apt
+- Hold packages(remove autoupdate when upgrading other packages)
+#+begin_src bash
+apt-mark hold gitlab-ce
+#+end_src
+- show packages that are holded
+#+begin_src bash
+apt-mark showhold
+#+end_src

@@ -1,4 +1,4 @@
-#+title: Terraform
+* Terraform
 
 ** Basic terraform commands
 - terraform init
