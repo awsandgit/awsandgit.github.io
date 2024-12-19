@@ -73,10 +73,10 @@
               <a href=\"/\" class=\"nav-link\">Notes</a>
             </li>
             <li class=\"nav-item\">
-              <a href=\"#\" class=\"nav-link\">About</a>
+              <a href=\"/about.html\" class=\"nav-link\">About</a>
             </li>
             <li class=\"nav-item\">
-              <a href=\"#\" class=\"nav-link\">Contact</a>
+              <a href=\"https://rohitknows.github.io\" class=\"nav-link\">Contact</a>
             </li>
           </ul>
         </div>

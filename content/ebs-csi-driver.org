@@ -1,6 +1,6 @@
 * Setup EBS-CSI-Driver with GP3
 
-* EBS Driver Installation
+** EBS Driver Installation
 - Use helm chart or EKS Addon
 - Attach these two policies on the EKS-Nodes or ebs-csi-controller-sa (serviceAccount) used by the ebs-csi controller:
   1. arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
@@ -41,7 +41,7 @@
     ]
 }
 #+end_src
-* Storage Class Creation
+** Storage Class Creation
 - create gp3 storage class and make it default
 #+begin_src yaml
 kind: StorageClass
@@ -65,7 +65,7 @@ kubectl get sc
 kubectl annotate sc gp2 storageclass.kubernetes.io/is-default-class-
 #+end_src
 
-* Testing
+** Testing
 - create a test-pod
 #+begin_src yaml
 apiVersion: v1
@@ -100,7 +100,7 @@ spec:
 
 #+end_src
 
-* Postgres Setup with pvc
+** Postgres Setup with pvc
 - create pvc
 #+begin_src yaml
 kind: PersistentVolumeClaim

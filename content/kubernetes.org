@@ -1,0 +1,2333 @@
+* Requirements
+** Hardware
+- 3 Linux Server (Master Node)
+- 3 Linux Server (Worker Node)
+- 1 Linux Server (Nginx or HaProxy as LB) only needed when multiple Master Nodes
+
+* Installation
+** Manual
+- https://computingforgeeks.com/deploy-kubernetes-cluster-on-ubuntu-with-kubeadm/
+** Via Ansible
+*** Code
+- https://github.com/sudoix/kube-ansible
+*** Configuration
+**** Update inventory/k8s-servers.in
+#+begin_src toml
+[all]
+k8s-master1 ansible_host=192.168.0.11 private_ip=192.168.0.11
+k8s-master2 ansible_host=192.168.0.12 private_ip=192.168.0.12
+k8s-master3 ansible_host=192.168.0.13 private_ip=192.168.0.13
+
+k8s-worker1 ansible_host=192.168.0.14 private_ip=192.168.0.14
+k8s-worker2 ansible_host=192.168.0.15 private_ip=192.168.0.15
+k8s-worker3 ansible_host=192.168.0.16 private_ip=192.168.0.16
+k8s-worker4 ansible_host=192.168.0.18 private_ip=192.168.0.18
+
+k8s-haproxy-1 ansible_host=192.168.0.17 private_ip=192.168.0.17
+; lb2-test ansible_host=192.168.178.60 private_ip=192.168.178.60
+
+[k8s]
+k8s-master1
+k8s-master2
+k8s-master3
+k8s-worker1
+k8s-worker2
+k8s-worker3
+k8s-worker4
+
+[k8s_masters]
+k8s-master1
+k8s-master2
+k8s-master3
+
+[k8s_workers]
+k8s-worker1
+k8s-worker2
+k8s-worker3
+k8s-worker4
+
+
+[lb]
+k8s-haproxy-1
+; lb2-test
+
+
+[all:vars]
+ansible_user="ansible"
+ansible_password="ansible"
+ansible_port=22
+ansible_python_interpreter = "/usr/bin/python3"
+domain="demo.local"
+apiserver_url="api.demo.local"
+#+end_src
+**** Update inventory/group_vars/all.yml
+- change interface_name, virtural_ip and haproxy pass
+#+begin_src yaml
+# General
+install_ansible_modules: "true"
+disable_transparent_huge_pages: "true"
+setup_interface: "false"
+
+#SSH
+ssh_port: 22
+
+# Network Calico see here for more details https://github.com/projectcalico/calico/releases
+calico_operator_url: "https://raw.githubusercontent.com/projectcalico/calico/v3.29.0/manifests/tigera-operator.yaml"
+calico_crd_url: "https://raw.githubusercontent.com/projectcalico/calico/v3.29.0/manifests/custom-resources.yaml"
+pod_network_cidr: "192.168.0.0/16"
+
+# DNS
+resolv_nameservers: [8.8.8.8, 4.2.2.4] # 403.online
+
+# Sanction shekan
+use_iran: "false" # change it to "false" if you are outside of iran
+
+# Docker
+docker_gpg_key_url: "https://download.docker.com/linux/ubuntu/gpg"
+docker_gpg_key_path: "/etc/apt/keyrings/docker.gpg"
+docker_apt_repo: "https://download.docker.com/linux/ubuntu"
+
+# Kubernetes
+kubernetes_gpg_keyring_path: "/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+kubernetes_gpg_key_url: "https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key"
+kubernetes_apt_repo: "https://pkgs.k8s.io/core:/stable:/v1.31/deb/"
+k8s_version: "1.31.2" # see here https://kubernetes.io/releases/patch-releases/ and https://github.com/kubernetes/kubernetes/releases
+
+# CRI
+cri_socket: unix:///var/run/containerd/containerd.sock
+
+# VRRP and HAProxy
+interface_name: "ens33"
+virtual_ip: "192.168.0.17"
+haproxy_frontend_password: "121password121"
+
+
+# Disk
+# disk: "/dev/sdb"
+# partition: "/dev/sdb1"
+# volume_group: "data_vg"
+# logical_volume: "data_lv"
+# filesystem_type: "xfs"
+# mount_point: "/data"
+#+end_src
+
+* Gitlab runner k8s
+** Installation
+- Add gitlab chart
+#+begin_src bash
+helm repo add gitlab https://charts.gitlab.io
+#check for versions
+helm search repo -l gitlab/gitlab-runner
+#update the repo for latest chart version
+helm repo update gitlab
+#+end_src
+- Install after configuring the values.yaml
+#+begin_src bash
+helm install --namespace <NAMESPACE> gitlab-runner -f <CONFIG_VALUES_FILE> gitlab/gitlab-runner
+#+end_src
+- Upgrade if modifications made in values.yaml
+#+begin_src bash
+helm install --namespace <NAMESPACE> gitlab-runner -f <CONFIG_VALUES_FILE> gitlab/gitlab-runner
+#+end_src
+** Configuration:
+*** Adding private registry to pull images from
+- create a docker-registry secret
+#+begin_src bash
+kubectl create secret docker-registry <SECRET_NAME> \
+--namespace <NAMESPACE> \
+--docker-server="https://<REGISTRY_SERVER>" \
+--docker-username="<REGISTRY_USERNAME>" \
+--docker-password="<REGISTRY_PASSWORD>"
+#+end_src
+- Example
+#+begin_src bash
+kubectl create secret docker-registry demo-test \
+--namespace demo-test \
+--docker-server="https://index.docker.io/v1/" \
+--docker-username="dockerhub_username" \
+--docker-password="dockerhub_pat_or_pass"
+#+end_src
+- Set imagePullSecrets to this secret in config.toml or values.yaml of the gitlab helm chart
+#+begin_src toml
+runners:
+  config: |
+    [[runners]]
+      [runners.kubernetes]
+        ## Specify one or more imagePullSecrets
+        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+        ##
+        image_pull_secrets = <SECRET_NAME>
+#+end_src
+*** Add runnerToken as a secret
+- Create the secret with runner-token and keep registration-token as blank
+#+begin_src bash
+kubectl create secret generic <SECRET_CONTAINING_TOKEN> \
+--namespace <NAMESPACE> \
+--from-literal=runner-registration-token=""
+--from-literal=runner-token="<RUNNER_TOKEN>"
+kubectl create secret generic gitlab-runner \
+--namespace gitlab \
+--from-literal=runner-registration-token=""
+--from-literal=runer-token="glrt-jsflkjdslfz3MfLk"
+#+end_src
+- Specify the secret name in the values.yaml file
+#+begin_src toml
+runners:
+  config: |
+    [[runners]]
+      [runners.kubernetes]
+  executor: kubernetes
+  ## The name of the secret containing runner-token and runner-registration-token
+  secret: <SECRET_CONTAINING_TOKEN>
+#+end_src
+
+** Values.yaml
+- Sample values.yaml file for the gitlab-runner helm chart
+*** OnPremise Runner with Domainiv Gitlab Values Yaml
+#+begin_src yaml
+image:
+  registry: registry.gitlab.com
+  image: gitlab-org/gitlab-runner
+  # tag: alpine-v{{.Chart.AppVersion}}
+
+useTini: false
+
+imagePullPolicy: IfNotPresent
+# imagePullSecrets:
+#   - name: "image-pull-secret"
+## Timeout, in seconds, for liveness and readiness probes of a runner pod.
+# probeTimeoutSeconds: 4
+
+## Configure the livenessProbe
+livenessProbe: {}
+readinessProbe: {}
+
+## How many runner pods to launch.
+##
+# replicas: 1
+
+## How many old ReplicaSets for this Deployment you want to retain
+# revisionHistoryLimit: 10
+
+gitlabUrl: https://gitlab.domain.in/
+
+# runnerToken: ""
+
+unregisterRunners: true
+terminationGracePeriodSeconds: 3600
+
+## Set the certsSecretName in order to pass custom certficates for GitLab Runner to use.
+## Provide resource name for a Kubernetes Secret Object in the same namespace,
+## this is used to populate the /home/gitlab-runner/.gitlab-runner/certs/ directory
+## ref: https://docs.gitlab.com/runner/configuration/tls-self-signed.html#supported-options-for-self-signed-certificates-targeting-the-gitlab-server
+##
+# certsSecretName:
+
+## Configure the maximum number of concurrent jobs
+## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
+##
+concurrent: 10
+
+shutdown_timeout: 0
+
+checkInterval: 3
+
+sessionServer:
+  enabled: false
+  # annotations: {}
+  # timeout: 1800
+  # internalPort: 8093
+  # externalPort: 9000
+
+  #In case sessionServer.serviceType is NodePort. If not defined, auto NodePort will be assigned.
+  # nodePort: 30093
+
+  # publicIP: ""
+  # loadBalancerSourceRanges:
+  #   - 1.2.3.4/32
+
+  #Valid values: ClusterIP, Headless, NodePort, LoadBalancer
+  serviceType: LoadBalancer
+
+  # if enabled, sessionServer.publicIP variable should be set to the host e.g. runner1.example.com
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    tls:
+      - secretName: gitlab-runner-session-server
+
+## For RBAC support:
+rbac:
+  create: true
+  ## Define the generated serviceAccountName when create is set to true
+  ## It defaults to "gitlab-runner.fullname" if not provided
+  ## DEPRECATED: Please use `serviceAccount.name` instead
+  generatedServiceAccountName: ""
+  rules: []
+  clusterWideAccess: false
+  ## DEPRECATED: Please use `serviceAccount.annotations` instead
+  serviceAccountAnnotations: {}
+
+  ## Use podSecurity Policy
+  ## ref: https://kubernetes.io/docs/concepts/policy/pod-security-policy/
+  podSecurityPolicy:
+    enabled: false
+    resourceNames:
+      - gitlab-runner
+
+  ## DEPRECATED: Please use `serviceAccount.imagePullSecrets` instead
+  imagePullSecrets: []
+
+## Configure ServiceAccount
+serviceAccount:
+  create: true
+  name: "gitlab-runner-sa"
+  ## Additional custom annotations for the ServiceAccount, useful for annotations such as eks.amazonaws.com/role-arn.
+  ## Values may refer other values as the _tpl_ function is implicitly applied. Mind the quotes when using this, e.g.
+  ## serviceAccountAnnotations:
+  ##   eks.amazonaws.com/role-arn: "arn:aws:iam::{{ .Values.global.accountId }}:role/{{ .Values.global.iamRoleName }}"
+  ##
+  ## ref: https://docs.aws.amazon.com/eks/latest/userguide/specify-service-account-role.html
+  ##
+  annotations: {}
+  imagePullSecrets: []
+metrics:
+  enabled: false
+  portName: metrics
+  port: 9252
+  serviceMonitor:
+    enabled: false
+## Configure a service resource e.g., to allow scraping metrics via
+## prometheus-operator serviceMonitor
+service:
+  enabled: false
+  type: ClusterIP
+
+## Configuration for the Pods that the runner launches for each new job
+##
+runners:
+  # tpl: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function
+  # runner configuration: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
+  config: |
+    [[runners]]
+      clone_url = "https://gitlab.domain.in"
+      [runners.kubernetes]
+        namespace = "{{.Release.Namespace}}"
+        image = "alpine"
+        [[runners.kubernetes.host_aliases]]
+          ip = "192.168.0.17"
+          hostnames = ["api.demo.local"]
+
+
+  ## Absolute path for an existing runner configuration file
+  ## Can be used alongside "volumes" and "volumeMounts" to use an external config file
+  ## Active if runners.config is empty or null
+  configPath: ""
+
+  executor: kubernetes
+
+  ## The name of the secret containing runner-token and runner-registration-token
+  secret: gitlab-secret
+
+
+  cache: {}
+    ## S3 the name of the secret.
+    # secretName: s3access
+    ## Use this line for access using gcs-access-id and gcs-private-key
+    # secretName: gcsaccess
+    ## Use this line for access using google-application-credentials file
+    # secretName: google-application-credentials
+    ## Use this line for access using Azure with azure-account-name and azure-account-key
+    # secretName: azureaccess
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  privileged: false
+  capabilities:
+    drop: ["ALL"]
+
+strategy: {}
+  # rollingUpdate:
+  #   maxSurge: 1
+  #   maxUnavailable: 0
+  # type: RollingUpdate
+
+## Configure securitycontext valid for the whole pod
+## ref: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+##
+podSecurityContext:
+  runAsUser: 100
+  # runAsGroup: 65533
+  fsGroup: 65533
+  # supplementalGroups: [65533]
+
+  ## Note: values for the ubuntu image:
+  # runAsUser: 999
+  # fsGroup: 999
+
+## Configure resource requests and limits
+## ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+##
+resources: {}
+  # limits:
+  #   memory: 256Mi
+  #   cpu: 200m
+  #   ephemeral-storage: 512Mi
+  # requests:
+  #   memory: 128Mi
+  #   cpu: 100m
+  #   ephemeral-storage: 256Mi
+
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+affinity: {}
+
+## TopologySpreadConstraints for pod assignment
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+##
+topologySpreadConstraints: {}
+  # Example: The gitlab runner should be evenly spread across zones
+  # - maxSkew: 1
+  #   topologyKey: zone
+  #   whenUnsatisfiable: DoNotSchedule
+  #   labelSelector:
+  #     matchLabels:
+  #       foo: bar
+
+## RuntimeClass name for pod assignment
+## ref: https://kubernetes.io/docs/concepts/containers/runtime-class/
+##
+runtimeClassName: ""
+  # Example: Once RuntimeClasses are configured for the cluster, you can specify it.
+  # runtimeClassName: myclass
+
+## Node labels for pod assignment
+## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+##
+nodeSelector: {}
+  # Example: The gitlab runner manager should not run on spot instances so you can assign
+  # them to the regular worker nodes only.
+  # node-role.kubernetes.io/worker: "true"
+
+## List of node taints to tolerate (requires Kubernetes >= 1.6)
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+##
+tolerations: []
+  # Example: Regular worker nodes may have a taint, thus you need to tolerate the taint
+  # when you assign the gitlab runner manager with nodeSelector or affinity to the nodes.
+  # - key: "node-role.kubernetes.io/worker"
+  #   operator: "Exists"
+
+## Configure environment variables that will be present when the registration command runs
+## This provides further control over the registration process and the config.toml file
+## ref: `gitlab-runner register --help`
+## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
+##
+# envVars:
+#   - name: RUNNER_EXECUTOR
+#     value: kubernetes
+
+extraEnv: {}
+
+## Additional environment variables from other data sources
+extraEnvFrom: {}
+
+## list of hosts and IPs that will be injected into the pod's hosts file
+hostAliases:
+  - ip: "192.168.0.17"
+    hostnames:
+    - "api.demo.local"
+  # - ip: "10.1.2.3"
+  #   hostnames:
+  #   - "foo.remote"
+  #   - "bar.remote"
+
+deploymentAnnotations: {}
+  # Example:
+  # downscaler/uptime: <my_uptime_period>
+
+deploymentLabels: {}
+  # Example:
+  # owner.team: <my_cool_team>
+
+deploymentLifecycle: {}
+  # Example
+  # preStop:
+  #   exec:
+  #     command: ["/bin/sh", "-c", "echo 'shutting down'"]
+
+## Set hostname for runner pods
+#hostname: my-gitlab-runner
+
+## Annotations to be added to manager pod
+##
+podAnnotations: {}
+  # Example:
+  # iam.amazonaws.com/role: <my_role_arn>
+
+## Labels to be added to manager pod
+##
+## Supports templating
+podLabels: {}
+  # Example:
+  # owner.team: <my_cool_team>
+  # owner.team: "{{ .Values.team }}"
+  # tags.{{ .Values.tag }}/env: "{{ .Values.environment }}"
+
+## HPA support for custom metrics:
+## This section enables runners to autoscale based on defined custom metrics.
+## In order to use this functionality, you need to enable a custom metrics API server by
+## implementing "custom.metrics.k8s.io" using supported third party adapter
+## Example: https://github.com/directxman12/k8s-prometheus-adapter
+##
+# hpa: {}
+#   minReplicas: 1
+#   maxReplicas: 10
+#   metrics:
+#   - type: Pods
+#     pods:
+#       metricName: gitlab_runner_jobs
+#       targetAverageValue: 400m
+
+## Configure priorityClassName for manager pod. See k8s docs for more info on how pod priority works:
+##  https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+priorityClassName: ""
+
+secrets: []
+  # Example:
+  # - name: my-secret
+  # - name: myOtherSecret
+  #   items:
+  #     - key: key_one
+  #       path: path_one
+
+configMaps: {}
+volumeMounts: []
+volumes: []
+extraObjects: []
+#+end_src
+*** OnPremise Runner with Demo Gitlab Values Yaml
+#+begin_src yaml
+image:
+  registry: registry.gitlab.com
+  image: gitlab-org/gitlab-runner
+  # tag: alpine-v{{.Chart.AppVersion}}
+
+useTini: false
+
+imagePullPolicy: IfNotPresent
+# imagePullSecrets:
+#   - name: "image-pull-secret"
+## Timeout, in seconds, for liveness and readiness probes of a runner pod.
+# probeTimeoutSeconds: 4
+
+## Configure the livenessProbe
+livenessProbe: {}
+readinessProbe: {}
+
+## How many runner pods to launch.
+##
+# replicas: 1
+
+## How many old ReplicaSets for this Deployment you want to retain
+# revisionHistoryLimit: 10
+
+gitlabUrl: http://gitlab.demo.local/
+
+# runnerToken: ""
+
+unregisterRunners: true
+terminationGracePeriodSeconds: 3600
+
+## Set the certsSecretName in order to pass custom certficates for GitLab Runner to use.
+## Provide resource name for a Kubernetes Secret Object in the same namespace,
+## this is used to populate the /home/gitlab-runner/.gitlab-runner/certs/ directory
+## ref: https://docs.gitlab.com/runner/configuration/tls-self-signed.html#supported-options-for-self-signed-certificates-targeting-the-gitlab-server
+##
+# certsSecretName:
+
+## Configure the maximum number of concurrent jobs
+## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
+##
+concurrent: 10
+
+shutdown_timeout: 0
+
+checkInterval: 3
+
+sessionServer:
+  enabled: false
+  # annotations: {}
+  # timeout: 1800
+  # internalPort: 8093
+  # externalPort: 9000
+
+  #In case sessionServer.serviceType is NodePort. If not defined, auto NodePort will be assigned.
+  # nodePort: 30093
+
+  # publicIP: ""
+  # loadBalancerSourceRanges:
+  #   - 1.2.3.4/32
+
+  #Valid values: ClusterIP, Headless, NodePort, LoadBalancer
+  serviceType: LoadBalancer
+
+  # if enabled, sessionServer.publicIP variable should be set to the host e.g. runner1.example.com
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    tls:
+      - secretName: gitlab-runner-session-server
+
+## For RBAC support:
+rbac:
+  create: true
+  ## Define the generated serviceAccountName when create is set to true
+  ## It defaults to "gitlab-runner.fullname" if not provided
+  ## DEPRECATED: Please use `serviceAccount.name` instead
+  generatedServiceAccountName: ""
+  rules: []
+  clusterWideAccess: false
+  ## DEPRECATED: Please use `serviceAccount.annotations` instead
+  serviceAccountAnnotations: {}
+
+  ## Use podSecurity Policy
+  ## ref: https://kubernetes.io/docs/concepts/policy/pod-security-policy/
+  podSecurityPolicy:
+    enabled: false
+    resourceNames:
+      - gitlab-runner
+
+  ## DEPRECATED: Please use `serviceAccount.imagePullSecrets` instead
+  imagePullSecrets: []
+
+## Configure ServiceAccount
+serviceAccount:
+  create: true
+  name: "gitlab-runner-onpremise"
+  ## Additional custom annotations for the ServiceAccount, useful for annotations such as eks.amazonaws.com/role-arn.
+  ## Values may refer other values as the _tpl_ function is implicitly applied. Mind the quotes when using this, e.g.
+  ## serviceAccountAnnotations:
+  ##   eks.amazonaws.com/role-arn: "arn:aws:iam::{{ .Values.global.accountId }}:role/{{ .Values.global.iamRoleName }}"
+  ##
+  ## ref: https://docs.aws.amazon.com/eks/latest/userguide/specify-service-account-role.html
+  ##
+  annotations: {}
+  imagePullSecrets: []
+metrics:
+  enabled: false
+  portName: metrics
+  port: 9252
+  serviceMonitor:
+    enabled: false
+## Configure a service resource e.g., to allow scraping metrics via
+## prometheus-operator serviceMonitor
+service:
+  enabled: false
+  type: ClusterIP
+
+## Configuration for the Pods that the runner launches for each new job
+##
+runners:
+  # tpl: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function
+  # runner configuration: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
+  config: |
+    [[runners]]
+      name = "onpremise"
+      clone_url = "http://gitlab.demo.local"
+      [runners.kubernetes]
+        namespace = "{{.Release.Namespace}}"
+        image = "alpine"
+        [[runners.kubernetes.host_aliases]]
+          ip = "192.168.0.17"
+          hostnames = ["api.demo.local"]
+        [[runners.kubernetes.host_aliases]]
+          ip = "192.168.0.33"
+          hostnames = ["gitlab.demo.local"]
+
+  ## Absolute path for an existing runner configuration file
+  ## Can be used alongside "volumes" and "volumeMounts" to use an external config file
+  ## Active if runners.config is empty or null
+  configPath: ""
+
+  executor: kubernetes
+
+  ## The name of the secret containing runner-token and runner-registration-token
+  secret: gitlab-runner-onpremise
+
+
+  cache: {}
+    ## S3 the name of the secret.
+    # secretName: s3access
+    ## Use this line for access using gcs-access-id and gcs-private-key
+    # secretName: gcsaccess
+    ## Use this line for access using google-application-credentials file
+    # secretName: google-application-credentials
+    ## Use this line for access using Azure with azure-account-name and azure-account-key
+    # secretName: azureaccess
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  privileged: false
+  capabilities:
+    drop: ["ALL"]
+
+strategy: {}
+  # rollingUpdate:
+  #   maxSurge: 1
+  #   maxUnavailable: 0
+  # type: RollingUpdate
+
+## Configure securitycontext valid for the whole pod
+## ref: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+##
+podSecurityContext:
+  runAsUser: 100
+  # runAsGroup: 65533
+  fsGroup: 65533
+  # supplementalGroups: [65533]
+
+  ## Note: values for the ubuntu image:
+  # runAsUser: 999
+  # fsGroup: 999
+
+## Configure resource requests and limits
+## ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+##
+resources: {}
+  # limits:
+  #   memory: 256Mi
+  #   cpu: 200m
+  #   ephemeral-storage: 512Mi
+  # requests:
+  #   memory: 128Mi
+  #   cpu: 100m
+  #   ephemeral-storage: 256Mi
+
+## Affinity for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+affinity: {}
+
+## TopologySpreadConstraints for pod assignment
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+##
+topologySpreadConstraints: {}
+  # Example: The gitlab runner should be evenly spread across zones
+  # - maxSkew: 1
+  #   topologyKey: zone
+  #   whenUnsatisfiable: DoNotSchedule
+  #   labelSelector:
+  #     matchLabels:
+  #       foo: bar
+
+## RuntimeClass name for pod assignment
+## ref: https://kubernetes.io/docs/concepts/containers/runtime-class/
+##
+runtimeClassName: ""
+  # Example: Once RuntimeClasses are configured for the cluster, you can specify it.
+  # runtimeClassName: myclass
+
+## Node labels for pod assignment
+## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+##
+nodeSelector: {}
+  # Example: The gitlab runner manager should not run on spot instances so you can assign
+  # them to the regular worker nodes only.
+  # node-role.kubernetes.io/worker: "true"
+
+## List of node taints to tolerate (requires Kubernetes >= 1.6)
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+##
+tolerations: []
+  # Example: Regular worker nodes may have a taint, thus you need to tolerate the taint
+  # when you assign the gitlab runner manager with nodeSelector or affinity to the nodes.
+  # - key: "node-role.kubernetes.io/worker"
+  #   operator: "Exists"
+
+## Configure environment variables that will be present when the registration command runs
+## This provides further control over the registration process and the config.toml file
+## ref: `gitlab-runner register --help`
+## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
+##
+# envVars:
+#   - name: RUNNER_EXECUTOR
+#     value: kubernetes
+
+extraEnv: {}
+
+## Additional environment variables from other data sources
+extraEnvFrom: {}
+
+## list of hosts and IPs that will be injected into the pod's hosts file
+hostAliases:
+  - ip: "192.168.0.17"
+    hostnames:
+    - "api.demo.local"
+  - ip: "192.168.0.33"
+    hostnames:
+    - "gitlab.demo.local"
+  # - ip: "10.1.2.3"
+  #   hostnames:
+  #   - "foo.remote"
+  #   - "bar.remote"
+
+deploymentAnnotations: {}
+  # Example:
+  # downscaler/uptime: <my_uptime_period>
+
+deploymentLabels: {}
+  # Example:
+  # owner.team: <my_cool_team>
+
+deploymentLifecycle: {}
+  # Example
+  # preStop:
+  #   exec:
+  #     command: ["/bin/sh", "-c", "echo 'shutting down'"]
+
+## Set hostname for runner pods
+#hostname: my-gitlab-runner
+
+## Annotations to be added to manager pod
+##
+podAnnotations: {}
+  # Example:
+  # iam.amazonaws.com/role: <my_role_arn>
+
+## Labels to be added to manager pod
+##
+## Supports templating
+podLabels: {}
+  # Example:
+  # owner.team: <my_cool_team>
+  # owner.team: "{{ .Values.team }}"
+  # tags.{{ .Values.tag }}/env: "{{ .Values.environment }}"
+
+## HPA support for custom metrics:
+## This section enables runners to autoscale based on defined custom metrics.
+## In order to use this functionality, you need to enable a custom metrics API server by
+## implementing "custom.metrics.k8s.io" using supported third party adapter
+## Example: https://github.com/directxman12/k8s-prometheus-adapter
+##
+# hpa: {}
+#   minReplicas: 1
+#   maxReplicas: 10
+#   metrics:
+#   - type: Pods
+#     pods:
+#       metricName: gitlab_runner_jobs
+#       targetAverageValue: 400m
+
+## Configure priorityClassName for manager pod. See k8s docs for more info on how pod priority works:
+##  https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+priorityClassName: ""
+
+secrets: []
+  # Example:
+  # - name: my-secret
+  # - name: myOtherSecret
+  #   items:
+  #     - key: key_one
+  #       path: path_one
+
+configMaps: {}
+volumeMounts: []
+volumes: []
+extraObjects: []
+#+end_src
+* Gitlab Server Omnibus
+- https://about.gitlab.com/install/
+
+* Build docker images with Kaniko on Gitlab k8s runner
+** Kaniko config
+- located at /kaniko/.docker
+- name: config.json
+- auth is base64 encode dockerhub username/password
+#+begin_src bash
+echo "USERNAME:PASSWORD" | base64
+#+end_src
+#+begin_src json
+{
+  "auths": {
+    "https://index.docker.io/v1/": {
+      "auth": "cm9oaXRzaWdk242kdfjff5naDEwMTpkY2tyX3BhdF9hdUlkcUkyQm84cDNTM0p2NXgzcV9GWHpreUUK"
+    }
+  }
+}
+
+#+end_src
+- Or you can use username and password in plain text
+#+begin_src json
+{
+    "auths": {
+        "https://index.docker.io/v1/": {
+            "username": "username101",
+            "password": "dckr_pat_88928_FXzkyE"
+        }
+    }
+}
+#+end_src
+
+- For ecr, use this config, it will require access keys or an iam role on runner with access to ecr
+#+begin_src json
+{
+    "credStore": "ecr-login"
+}
+#+end_src
+- Reference: https://github.com/GoogleContainerTools/kaniko/blob/main/README.md#pushing-to-docker-hub
+** sample gitlab-ci.yml
+#+begin_src yaml
+stages:
+  - build
+
+variables:
+  DOCKERHUB_REGISTRY: docker.io
+  DOCKER_REGISTRY_DEV: $DOCKERHUB_REGISTRY/$DOCKERHUB_USER/$DOCKERHUB_REPO:frontend-$CI_COMMIT_SHORT_SHA
+
+build-and-push-to-dockerhub:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  tags:
+    - k8s
+  before_script:
+    - echo "Creating Docker configuration file"
+    - mkdir -p /kaniko/.docker
+    - cat "$KANIKO_CONFIG" > /kaniko/.docker/config.json
+  script:
+    - cat /kaniko/.docker/config.json
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination ${DOCKER_REGISTRY_DEV}
+    - mkdir -p /workspace
+  after_script:
+    - |
+      cat <<EOF > status.json
+      {
+        "pipelineId": "$CI_PIPELINE_ID",
+        "status": "$CI_JOB_STATUS",
+      }
+      EOF
+  artifacts:
+    paths:
+      - ./status.json
+    expire_in: 1 hrs 00 min
+#+end_src
+* Postgres on k8s
+** Single Instance Setup
+- [[file:ebs-csi-driver.org][Postgres Setup with EBS]]
+** Master/Slave Setup
+- https://freedium.cfd/https://medium.com/@wasiualhasib/postgresql-master-and-slave-streaming-replication-using-kubernetes-k8s-bb4549499783
+* Addons
+** Metrics Server
+- For HPA and VPA metrics
+- https://github.com/kubernetes-sigs/metrics-server
+** Kubectl/Kubectx
+#+begin_src bash
+sudo snap install kubectl --classic
+#For cluster switching
+sudo snap install kubectx --classic
+#kubens for ns switching
+#+end_src
+** k9s
+- For monitoring via terminal
+- https://github.com/derailed/k9s/releases
+** Helm
+- On ubuntu v20+
+#+begin_src bash
+sudo snap install helm --classic
+#+end_src
+- Reference: https://helm.sh/docs/intro/install/
+** Nginx LB Controller
+*** configuration docs:
+- https://github.com/kubernetes/ingress-nginx/blob/main/docs/user-guide/nginx-configuration/annotations.md
+*** Helm one liner for controller
+#+begin_src bash
+helm upgrade -i ingress-nginx ingress-nginx/ingress-nginx     --version 4.2.3     --namespace kube-system     --set controller.service.type
+=LoadBalancer --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"="nlb"
+
+#uninstall
+helm uninstall ingress-nginx -n kube-system
+#+end_src
+- https://docs.nginx.com/nginx-ingress-controller/installation/installing-nic/installation-with-manifests/
+- https://aws.amazon.com/blogs/containers/exposing-kubernetes-applications-part-3-nginx-ingress-controller/
+- https://github.com/kubernetes/ingress-nginx/blob/main/docs/user-guide/nginx-configuration/annotations.md
+** Cert Manager
+- https://cert-manager.io/docs/installation/
+- https://cert-manager.io/docs/tutorials/acme/nginx-ingress/
+** MetaLB
+- https://metallb.universe.tf/installation/
+** EBS CSI Driver
+- [[file:ebs-csi-driver.org][EBS Driver and StorageClass Setup]]
+** NFS Server
+*** Installation
+- https://microk8s.io/docs/how-to-nfs
+** CoreDNS HPA
+- https://kubernetes.io/docs/tasks/administer-cluster/dns-horizontal-autoscaling/
+
+** Kong Gateway
+*** Install Via Helm
+**** Values.yaml
+#+begin_src yaml
+# Do not use Kong Ingress Controller
+ingressController:
+  enabled: false
+
+image:
+  repository: kong/kong-gateway
+  tag: "3.7"
+
+# Mount the secret created earlier
+secretVolumes:
+  - kong-cluster-cert
+  # - kong-cp-kong-admin-cert
+
+env:
+  router_flavor: "traditional_compatible"
+
+  # This is a control_plane node
+  #  role: control_plane
+  # These certificates are used for control plane / data plane communication
+  cluster_cert: /etc/secrets/kong-cluster-cert/tls.crt
+  cluster_cert_key: /etc/secrets/kong-cluster-cert/tls.key
+  cluster_control_plane: kong-cp-kong-cluster.kong.svc.cluster.local:8005
+  cluster_telemetry_endpoint: kong-cp-kong-clustertelemetry.kong.svc.cluster.local:8006
+  lua_ssl_trusted_certificate: /etc/secrets/kong-cluster-cert/tls.crt
+
+
+  # Database
+  # CHANGE THESE VALUES
+  database: postgres
+  pg_database: kong
+  pg_user: kong
+  pg_password: demo123
+  pg_host: kong-cp-postgresql.kong.svc.cluster.local
+  pg_ssl: "on"
+
+  # Kong Manager password
+  password: kongAdmin
+  #admin gui
+  # admin_gui_url: https://manager.kong-op.domain.in
+  # admin_gui_ssl_cert: /etc/secrets/manager-kong-tls/tls.crt
+  # admin_gui_ssl_cert_key: /etc/secrets/manager-kong-tls/tls.key
+# Enterprise functionality
+enterprise:
+  enabled: false
+  #  license_secret: kong-enterprise-license
+
+# The control plane serves the Admin API
+admin:
+  enabled: true
+  type: ClusterIP
+  loadBalancerClass: "nginx"
+  http:
+    enabled: true
+    servicePort: 8001
+    containerPort: 8001
+    parameters:
+      - http2
+
+  tls:
+    enabled: true
+    servicePort: 8444
+    containerPort: 8444
+    parameters:
+      - http2
+  ingress:
+    # Enable/disable exposure using ingress.
+    enabled: true
+    ingressClassName: "nginx"
+    tls: "admin-kong-tls" # TLS secret name
+    hostname: "admin.kong-op.domain.in"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      # nginx.ingress.kubernetes.io/auth-type: "basic"
+      # nginx.ingress.kubernetes.io/auth-secret: "basic-auth"
+      # nginx.ingress.kubernetes.io/auth-realm: "Restricted Access"
+    path: /
+    pathType: Prefix
+
+# Clustering endpoints are required in hybrid mode
+cluster:
+  enabled: true
+  tls:
+    enabled: true
+
+clustertelemetry:
+  enabled: true
+  tls:
+    enabled: true
+
+# Optional features
+manager:
+  enabled: true
+  type: ClusterIP
+  http:
+    enabled: true
+    servicePort: 8002
+    containerPort: 8002
+    parameters: []
+
+  tls:
+    enabled: true
+    servicePort: 8445
+    containerPort: 8445
+    parameters:
+      - http2
+  ingress:
+    # Enable/disable exposure using ingress.
+    enabled: true
+    ingressClassName: "nginx"
+    tls: "manager-kong-tls" # TLS secret name
+    hostname: "manager.kong-op.domain.in"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/auth-type: "basic"
+      nginx.ingress.kubernetes.io/auth-secret: "basic-auth"
+      nginx.ingress.kubernetes.io/auth-realm: "Restricted Access"
+    path: /
+    pathType: Prefix
+
+proxy:
+  enabled: true
+  type: ClusterIP
+  labels:
+    enable-metrics: "true"
+  http:
+    enabled: true
+    # Set the servicePort: 0 to skip exposing in the service but still
+    # let the port open in container to allow https to http mapping for
+    # tls terminated at LB.
+    servicePort: 80
+    containerPort: 8000
+    parameters:
+      - http2
+
+  tls:
+    enabled: true
+    servicePort: 443
+    containerPort: 8443
+    # Set a target port for the TLS port in proxy service
+    # overrideServiceTargetPort: 8000
+    # Set a nodePort which is available if service type is NodePort
+    # nodePort: 32443
+    # Additional listen parameters, e.g. "reuseport", "backlog=16384"
+    parameters:
+      - http2
+
+  # Kong proxy ingress settings.
+  # Note: You need this only if you are using another Ingress Controller
+  # to expose Kong outside the k8s cluster.
+  ingress:
+    # Enable/disable exposure using ingress.
+    enabled: true
+    ingressClassName: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+      nginx.ingress.kubernetes.io/rewrite-target: /
+    labels: {}
+    hostname: "kong-op.domain.in"
+    path: /
+    pathType: Prefix
+    tls: kong-proxy-tls
+
+postgresql:
+  enabled: true
+  auth:
+    password: demo123
+  image:
+    # Use postgres < 14 until this issue is resolved and released:
+    # https://github.com/Kong/kong/issues/8533
+    # Enterprise (kong-gateway) supports postgres 14
+    tag: 13.11.0-debian-11-r20
+  service:
+    ports:
+      postgresql: "5432"
+
+certificates:
+  enabled: true
+  clusterIssuer: "letsencrypt-prod"
+
+  proxy:
+    enabled: true
+    clusterIssuer: "letsencrypt-prod"
+    commonName: "kong-op.domain.in"
+    dnsNames:
+      - "kong-op.domain.in"
+  cluster:
+    enabled: false
+
+  admin:
+    enabled: true
+    clusterIssuer: "letsencrypt-prod"
+    commonName: "admin.kong-op.domain.in"
+    dnsNames:
+      - "admin.kong-op.domain.in"
+
+  manager:
+    enabled: true
+    clusterIssuer: "letsencrypt-prod"
+    commonName: "manager.kong-op.domain.in"
+    dnsNames:
+      - "manager.kong-op.domain.in"
+#+end_src
+**** Commands
+1. Add repo
+#+begin_src bash
+helm repo add kong https://charts.konghq.com
+helm repo update
+#create a k8s ns for kong
+kubectl create namespace kong
+#+end_src
+2. Add empty license
+#+begin_src bash
+kubectl create secret generic kong-enterprise-license --from-literal=license="'{}'" -n kong
+#+end_src
+3. Generate a tls using openssl
+#+begin_src bash
+openssl req -new -x509 -nodes -newkey ec:<(openssl ecparam -name secp384r1) -keyout ./tls.key -out ./tls.crt -days 1095 -subj "/CN=kong_clustering"
+#+end_src
+4. Create K8S secret with those
+#+begin_src bash
+kubectl create secret tls kong-cluster-cert --cert=./tls.crt --key=./tls.key -n kong
+#+end_src
+5. Apply the Helm chart
+#+begin_src bash
+helm install kong-cp kong/kong -n kong --values ./values.yaml
+#Verify using
+kubectl get po -n kong
+#+end_src
+**** After Installation
+- Use Proxy service endpoint to access kong
+- Create routes using admin endpoint and verify on proxy endpoint, use below doc reference
+*** Reference
+- https://docs.konghq.com/gateway/latest/install/kubernetes/proxy/
+* Gitlab CI
+** Directory Structure
+├── .k8s
+│   ├── dev
+│   │   ├── deployment.yaml
+│   │   ├── deploy.sh
+│   │   └── svc.yaml
+│   ├── prod
+│   │   ├── deployment.yaml
+│   │   ├── deploy.sh
+│   │   ├── hpa.yaml
+│   │   └── svc.yaml
+│   ├── qa
+│   │   ├── deployment.yaml
+│   │   ├── deploy.sh
+│   │   └── svc.yaml
+│   └── terms
+│       ├── deploy-dev.sh
+│       ├── deployment.yaml
+│       ├── deploy-prod.sh
+│       ├── deploy-qa.sh
+│       └── svc.yaml
+├── package.json
+├── package-lock.json
+├── .dockerignore
+├── Dockerfile
+├── .gitlab-ci.yml
+├── .gitignore
+├── src/
+
+** GitIgnore
+#+begin_src .gitignore
+.DS_Store
+/node_modules
+/dist
+/public
+/coverage
+/.nyc_output
+single_*
+input_menu*
+imports
+exports
+cred.md
+pem
+newrelic_agent.log
+newrelic.js
+# local env files
+.env.local
+.env.*.local
+*.mongodb
+env/common/dev.json
+
+# local testing config
+config/local-*.json
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+log
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw*
+
+#model directories in each service
+*-service/model
+
+#lua directories in each service
+*-service/lua
+
+#constant directories in each service
+*-service/src/constant
+
+*-service/database-backup-mongodump
+
+*-service/download/*
+node_modules
+#+end_src
+** DockerIgnore
+#+begin_src .dockerignore
+node_modules
+.dockerignore
+.git/
+.gitignore
+.gitlab-ci.yaml
+node_modules/*
+README.md
+logs/*
+nodemon.json
+# package-lock.json
+tslint.json
+swagger.json
+test/
+gulpfile.js
+#+end_src
+*** backend-service .gitlab-ci.yml
+#+begin_src yaml
+stages:
+  - build
+  - deploy
+
+variables:
+  CI_REGISTRY_DEV: $ECR_REPO_DEV:user-$CI_COMMIT_SHORT_SHA
+  CI_REGISTRY_QA: $ECR_REPO_QA:user-$CI_COMMIT_SHORT_SHA
+  CI_REGISTRY_PROD: ${DOCKERHUB_USER}/${DOCKERHUB_REPO}:user-$CI_COMMIT_SHORT_SHA
+  CI_REGISTRY_TERMS_DEV: $ECR_REPO_DEV:terms-$CI_COMMIT_SHORT_SHA
+  CI_REGISTRY_TERMS_QA: $ECR_REPO_QA:terms-$CI_COMMIT_SHORT_SHA
+  CI_REGISTRY_TERMS_PROD: ${DOCKERHUB_USER}/${DOCKERHUB_REPO}:terms-$CI_COMMIT_SHORT_SHA
+
+build-and-push-to-ecr:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  only:
+    - dev
+    - qa
+  tags:
+    - k8s
+  before_script:
+    - echo "Creating Docker configuration file"
+    - mkdir -p /kaniko/.docker
+    - echo "{\"credsStore\":\"ecr-login\"}" > /kaniko/.docker/config.json
+  script:
+    - mkdir -p env/common
+    - if [ "$CI_COMMIT_BRANCH" ==  "dev" ] ; then cat "${DEV_ENV}" > env/common/dev.json ; fi
+    - if [ "$CI_COMMIT_BRANCH" ==  "qa" ] ; then cat "${QA_ENV}" > env/common/qa.json ; fi
+
+    - if [ "$CI_COMMIT_BRANCH" ==  "dev" ] ; then /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --build-arg branch_name=${CI_COMMIT_BRANCH}
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination ${CI_REGISTRY_DEV} ; fi
+
+    - if [ "$CI_COMMIT_BRANCH" ==  "dev" ] ; then /kaniko/executor
+      --context "${CI_PROJECT_DIR}/public"
+      --dockerfile "${CI_PROJECT_DIR}/public/Dockerfile"
+      --destination ${CI_REGISTRY_TERMS_DEV} ; fi
+
+    - if [ "$CI_COMMIT_BRANCH" ==  "qa" ] ; then /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --build-arg branch_name=${CI_COMMIT_BRANCH}
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination ${CI_REGISTRY_QA} ; fi
+
+    - if [ "$CI_COMMIT_BRANCH" ==  "qa" ] ; then /kaniko/executor
+      --context "${CI_PROJECT_DIR}/public"
+      --dockerfile "${CI_PROJECT_DIR}/public/Dockerfile"
+      --destination ${CI_REGISTRY_TERMS_QA} ; fi
+
+build-and-push-to-dockerhub:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  only:
+    - prod
+  tags:
+    - demo-runner
+  before_script:
+    - echo "Creating Docker configuration file"
+    - mkdir -p /kaniko/.docker
+    - cat ${KANIKO_CONFIG} > /kaniko/.docker/config.json
+  script:
+    - mkdir -p env/common
+    - if [ "$CI_COMMIT_BRANCH" ==  "prod" ] ; then cat "${PROD_ENV}" > env/common/prod.json ; fi
+    - if [ "$CI_COMMIT_BRANCH" ==  "prod" ] ; then /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --build-arg branch_name=${CI_COMMIT_BRANCH}
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination ${CI_REGISTRY_PROD} ; fi
+
+    - if [ "$CI_COMMIT_BRANCH" ==  "prod" ] ; then /kaniko/executor
+      --context "${CI_PROJECT_DIR}/public"
+      --dockerfile "${CI_PROJECT_DIR}/public/Dockerfile"
+      --destination ${CI_REGISTRY_TERMS_PROD} ; fi
+
+deploy-to-eks:
+  stage: deploy
+  image:
+    name: registry.gitlab.com/gitlab-org/cloud-deploy/aws-base:latest
+  only:
+    - dev
+    - qa
+  tags:
+    - k8s
+  script:
+    - |
+      curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.27.1/2023-04-19/bin/linux/amd64/kubectl
+      chmod +x ./kubectl
+      mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$HOME/bin:$PATH
+      kubectl version --short --client
+    - |
+    - aws eks update-kubeconfig --region $AWS_REGION --name $K8S_DEV_CLUSTER
+    - if [ "$CI_COMMIT_BRANCH" ==  "dev" ] ; then sh .k8s/dev/deploy.sh ; fi
+    - if [ "$CI_COMMIT_BRANCH" ==  "qa" ] ; then sh .k8s/qa/deploy.sh ; fi
+    - if [ "$CI_COMMIT_BRANCH" ==  "dev" ] ; then sh .k8s/terms/deploy-dev.sh ; fi
+    - if [ "$CI_COMMIT_BRANCH" ==  "qa" ] ; then sh .k8s/terms/deploy-qa.sh ; fi
+
+deploy-to-on-premise:
+  stage: deploy
+  image:
+    name: registry.gitlab.com/gitlab-org/cloud-deploy/aws-base:latest
+  only:
+    - prod
+  tags:
+    - demo-runner
+  script:
+    - |
+      curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.27.1/2023-04-19/bin/linux/amd64/kubectl
+      chmod +x ./kubectl
+      mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$HOME/bin:$PATH
+      kubectl version --short --client
+    - |
+      if [ "$CI_COMMIT_BRANCH" ==  "prod" ] ;
+      then mkdir -p $HOME/.kube
+      cat ${KUBE_CONFIG} > $HOME/.kube/config
+      kubectl get nodes
+      fi
+    - if [ "$CI_COMMIT_BRANCH" ==  "prod" ] ; then sh .k8s/prod/deploy.sh ; fi
+    - if [ "$CI_COMMIT_BRANCH" ==  "prod" ] ; then sh .k8s/terms/deploy-prod.sh ; fi
+#+end_src
+** Deploy Script
+#+begin_src bash
+sed -i "s@{{DOCKER_IMAGE}}@$CI_REGISTRY_PROD@g" ./.k8s/prod/deployment.yaml
+kubectl apply -f ./.k8s/prod/deployment.yaml
+kubectl apply -f ./.k8s/prod/svc.yaml
+kubectl apply -f ./.k8s/prod/hpa.yaml
+#+end_src
+* K8S Resource manifests
+** Dockerfile
+*** Backend Service Dockerfile
+#+begin_src Dockerfile
+FROM node:20.14.0-slim AS builder
+WORKDIR /usr/src/app
+RUN apt-get update && \
+    apt-get install -y python3 python3-dev build-essential net-tools curl && \
+    rm -rf /var/lib/apt/lists/*
+COPY package*.json ./
+#for bad tar archive error
+#RUN npm config set registry https://registry.npmmirror.com/ --global
+RUN npm install
+RUN npm install -g typescript
+COPY . .
+RUN tsc
+
+FROM node:20.14.0-slim
+ARG branch_name
+ENV envValue=$branch_name
+#RUN apt-get update && apt-get install -y \
+#    wget \
+#    ca-certificates \
+#    fonts-liberation \
+#    libappindicator3-1 \
+#    libasound2 \
+#    libx11-xcb1 \
+#    libxcomposite1 \
+#    libxdamage1 \
+#    libxrandr2 \
+#    libgbm1 \
+#    chromium \
+#    --no-install-recommends \
+#    && rm -rf /var/lib/apt/lists/*
+
+COPY --chown=node:node --from=builder /usr/src/ /usr/src/
+WORKDIR /usr/src/app
+#COPY --chown=node:node src/views/ dist/views/
+#COPY --chown=node:node proto/ dist/proto/
+USER node
+CMD npm run start:$envValue
+
+#+end_src
+*** ReactJS Dockerfile
+#+begin_src Dockerfile
+FROM node:20 AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+WORKDIR /var/www/app
+COPY --from=build /app/dist ./dist
+COPY ./.nginx/nginx.conf /etc/nginx/nginx.conf
+COPY ./.nginx/security.conf /etc/nginx/security.conf
+COPY ./.nginx/general.conf /etc/nginx/general.conf
+
+RUN chown -R nginx:nginx /var/www/app /var/log/nginx /tmp /etc/nginx
+
+#EXPOSE 8080
+
+USER nginx
+CMD ["nginx", "-g", "daemon off;"]
+#+end_src
+*** Static html Dockerfile
+#+begin_src Dockerfile
+#FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
+
+WORKDIR /usr/share/nginx/html
+
+COPY ./*.html /usr/share/nginx/html/
+
+#EXPOSE 8080
+
+CMD ["nginx", "-g", "daemon off;"]
+#+end_src
+** CertManager
+*** Prod Letsencrypt ClusterIssuer
+#+begin_src yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: username101@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+#+end_src
+*** Staging Letsencrypt Issuer for testing
+#+begin_src yaml
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt-staging
+  namespace: default
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: username101@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-staging
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+#+end_src
+
+** Deployment Manifests
+*** DEV
+**** Activity Service
+- Deployment
+#+begin_src yaml
+apiVersion: apps/v1
+kind: "Deployment"
+metadata:
+  name: activity-svc
+  labels:
+    app: activity-svc
+  namespace: demo-dev
+spec:
+  replicas: 1
+  revisionHistoryLimit: 4
+  selector:
+    matchLabels:
+      app: activity-svc
+  template:
+    metadata:
+      labels:
+        app: activity-svc
+    spec:
+#     imagePullSecrets:
+#     - name: demo-pod-secret
+      terminationGracePeriodSeconds: 20
+      containers:
+      - name: activity-svc
+        image: {{DOCKER_IMAGE}}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4001
+          name: activity-api
+        - containerPort: 50051
+          name: activity-grpc
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "200Mi"
+          requests:
+            cpu: "100m"
+            memory: "200Mi"
+        readinessProbe:
+          tcpSocket:
+            port: 4001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 4001
+          initialDelaySeconds: 10
+          periodSeconds: 15
+#+end_src
+
+**** Upload Service with EBS PVC
+#+begin_src yaml
+apiVersion: apps/v1
+kind: "Deployment"
+metadata:
+  name: upload-svc
+  labels:
+    app: upload-svc
+  namespace: demo-dev
+spec:
+  replicas: 1
+  revisionHistoryLimit: 4
+  selector:
+    matchLabels:
+      app: upload-svc
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: upload-svc
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      # Uncomment the following line to enable pulling images from a private registry
+      # imagePullSecrets:
+      #   - name: your-image-pull-secret
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: upload-svc
+          image: {{DOCKER_IMAGE}}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4004
+              name: upload-api
+            - containerPort: 50054
+              name: upload-grpc
+          resources:
+            limits:
+              cpu: "100m"
+              memory: "200Mi"
+            requests:
+              cpu: "100m"
+              memory: "200Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 4004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 4004
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          volumeMounts:
+            - name: pv-data
+              mountPath: /usr/src/app/public
+              subPath: public
+      volumes:
+        - name: pv-data
+          persistentVolumeClaim:
+            claimName: upload-pv-claim
+#+end_src
+*** PROD
+**** Upload Service with NFS Volume
+#+begin_src yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: upload-svc
+  labels:
+    app: upload-svc
+  namespace: demo-prod
+spec:
+  replicas: 1
+  revisionHistoryLimit: 4
+  selector:
+    matchLabels:
+      app: upload-svc
+  template:
+    metadata:
+      labels:
+        app: upload-svc
+    spec:
+#      serviceAccountName: my-service-account
+      imagePullSecrets:
+      - name: demo-rohit
+      terminationGracePeriodSeconds: 20
+      containers:
+      - name: upload-svc
+        image: {{DOCKER_IMAGE}}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4004
+          name: upload-api
+        - containerPort: 50054
+          name: upload-grpc
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "200Mi"
+          requests:
+            cpu: "70m"
+            memory: "180Mi"
+        readinessProbe:
+          tcpSocket:
+            port: 4004
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 4004
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        volumeMounts:
+        - name: nfs-volume
+          mountPath: /usr/src/app/public
+      volumes:
+      - name: nfs-volume
+        nfs:
+          server: 192.168.0.31 # Replace with your NFS server's IP or hostname
+          path: /upload/share # Replace with the NFS export path
+          readOnly: false
+#+end_src
+** Ingress
+*** Dev Nginx Ingress
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-dev-nginx-ingress
+  namespace: demo-dev
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    #nginx.ingress.kubernetes.io/use-regex: "true"
+    #    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - demo-devapi.domain.in
+    - demo-dev.domain.in
+    secretName: demo-dev-tls
+  rules:
+  - host: demo-devapi.domain.in
+    http:
+      paths:
+      - path: /auth-service
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-svc
+            port:
+              number: 4000
+      - path: /user-service
+        pathType: Prefix
+        backend:
+          service:
+            name: user-svc
+            port:
+              number: 4003
+      - path: /upload-service
+        pathType: Prefix
+        backend:
+          service:
+            name: upload-svc
+            port:
+              number: 4004
+      - path: /provider-service
+        pathType: Prefix
+        backend:
+          service:
+            name: provider-svc
+            port:
+              number: 4006
+      - path: /activity-service
+        pathType: Prefix
+        backend:
+          service:
+            name: activity-svc
+            port:
+              number: 4001
+      - path: /admin-service
+        pathType: Prefix
+        backend:
+          service:
+            name: admin-svc
+            port:
+              number: 4002
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: terms-nginx
+            port:
+              number: 4010
+  - host: demo-dev.domain.in
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: react-ap-svc
+            port:
+              number: 8080
+#+end_src
+*** QA ALB Ingress
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: demo-qa
+  name: demo-qa-ingress
+  annotations:
+    alb.ingress.kubernetes.io/subnets: subnet-063d4ac8a5eae259c, subnet-0a974a92c35b3bf76, subnet-0dbf042e0a43c6ff8
+    kubernetes.io/ingress.class: "alb"
+    alb.ingress.kubernetes.io/scheme: "internet-facing"
+    alb.ingress.kubernetes.io/target-type: "ip"
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '15'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+    alb.ingress.kubernetes.io/success-codes: '200-499'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '5'
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=600,deregistration_delay.timeout_seconds=30
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:043210536673:certificate/86b55d04-a0a8-46f6-b554-7260e3349e8a
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-1-2017-01
+    alb.ingress.kubernetes.io/actions.ssl-redirect: '{"Type": "redirect", "RedirectConfig": { "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301"}}'
+    alb.ingress.kubernetes.io/group.name: "demo-group"
+spec:
+  ingressClassName: alb
+  defaultBackend:
+    service:
+      name: terms-nginx
+      port:
+        number: 4010
+  rules:
+    - host: demo-qa.domain.in
+      http:
+        paths:
+        - pathType: Prefix
+          path: /
+          backend:
+            service:
+              name: react-ap-svc
+              port:
+                number: 8080
+    - host: demo-qaapi.domain.in
+      http:
+        paths:
+        - pathType: Prefix
+          path: /auth-service
+          backend:
+            service:
+              name: auth-svc
+              port:
+                number: 4000
+        - pathType: Prefix
+          path: /user-service
+          backend:
+            service:
+              name: user-svc
+              port:
+                number: 4003
+        - pathType: Prefix
+          path: /upload-service
+          backend:
+            service:
+              name: upload-svc
+              port:
+                number: 4004
+        - pathType: Prefix
+          path: /provider-service
+          backend:
+            service:
+              name: provider-svc
+              port:
+                number: 4005
+        - pathType: Prefix
+          path: /activity-service
+          backend:
+            service:
+              name: activity-svc
+              port:
+                number: 4001
+        - pathType: Prefix
+          path: /admin-service
+          backend:
+            service:
+              name: admin-svc
+              port:
+                number: 4002
+#+end_src
+
+*** Prod Nginx Ingress
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-prod-ingress
+  namespace: demo-prod
+  annotations:
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/client-max-body-size: "100m"
+    nginx.ingress.kubernetes.io/enable-gzip: "true"
+    #nginx.ingress.kubernetes.io/use-regex: "true"
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+    # nginx.ingress.kubernetes.io/proxy-cache: "my_cache"
+    # nginx.ingress.kubernetes.io/proxy-cache-key: "$host$request_uri$http_accept_encoding"
+    #  nginx.ingress.kubernetes.io/cache-control: "public, max-age=86400"
+    #    cert-manager.io/issuer: "letsencrypt-staging"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  # tls:
+  # - hosts:
+  #   - admin.drdemo.com
+  #   - api.drdemo.com
+  #   secretName: demo-prod-tls-v1
+  rules:
+  - host: admin.drdemo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: react-ap-svc
+            port:
+              number: 8080
+  - host: api.drdemo.com
+    http:
+      paths:
+      - path: /auth-service
+        pathType: Prefix
+        backend:
+          service:
+            name: auth-svc
+            port:
+              number: 4000
+      - path: /activity-service
+        pathType: Prefix
+        backend:
+          service:
+            name: activity-svc
+            port:
+              number: 4001
+      - path: /admin-service
+        pathType: Prefix
+        backend:
+          service:
+            name: admin-svc
+            port:
+              number: 4002
+      - path: /user-service
+        pathType: Prefix
+        backend:
+          service:
+            name: user-svc
+            port:
+              number: 4003
+      - path: /upload-service
+        pathType: Prefix
+        backend:
+          service:
+            name: upload-svc
+            port:
+              number: 4004
+      - path: /provider-service
+        pathType: Prefix
+        backend:
+          service:
+            name: provider-svc
+            port:
+              number: 4005
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: terms-nginx
+            port:
+              number: 4010
+#+end_src
+** HPA
+#+begin_src yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: activity-svc
+  namespace: demo-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: activity-svc
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          averageUtilization: 80
+          type: Utilization
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          averageUtilization: 80
+          type: Utilization
+#+end_src
+** K8S Dashboard
+*** RBAC
+**** Service Account
+#+begin_src yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kubernetes-dashboard
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: viewer
+  namespace: demo-prod
+#+end_src
+**** Admin Rolebinding
+#+begin_src yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kubernetes-dashboard
+#+end_src
+
+**** Admin Secret
+#+begin_src yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: admin-user-secret
+  namespace: kubernetes-dashboard
+  annotations:
+    kubernetes.io/service-account.name: admin-user
+type: kubernetes.io/service-account-token
+#+end_src
+
+**** Reader/Viewer Role and rolebinding
+#+begin_src yaml
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: reader-role
+  namespace: demo-prod
+rules:
+- apiGroups: [""]
+  resources: ["*"]
+  verbs: ["get","list","watch"]
+- apiGroups: ["extensions"]
+  resources: ["*"]
+  verbs: ["get","list","watch"]
+
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: reader-rolebinding
+  namespace: demo-prod
+subjects:
+- kind: ServiceAccount
+  name: viewer
+  namespace: demo-prod
+roleRef:
+  kind: Role
+  name: reader-role
+  apiGroup: rbac.authorization.k8s.io
+
+#+end_src
+**** Reader Secret
+#+begin_src yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: viewer-user-secret
+  namespace: demo-prod
+  annotations:
+    kubernetes.io/service-account.name: viewer
+type: kubernetes.io/service-account-token
+#+end_src
+
+*** Ingress
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: kubernetes-dashboard
+  name: kubernetes-dashboard-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  # tls:
+  #   - hosts:
+  #       - dashboard.drdemo.com
+  #     secretName: kubernetes-dashboard-cert
+  rules:
+    - host: dashboard.drdemo.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kubernetes-dashboard-kong-proxy
+                port:
+                  number: 443
+#+end_src
+*** Extract Secret and use it to authenticate and log in to K8S dashboard
+#+begin_src bash
+kubectl  get secret admin-user-secret -n kubernetes-dashboard -o jsonpath='{.data.token}' | base64 -d
+kubectl  get secret viewer-user-secret -n demo-prod -o jsonpath='{.data.token}' | base64 -d
+#+end_src
+** EBS
+*** StorageClass
+#+begin_src yaml
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+allowVolumeExpansion: true
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  type: gp3
+#+end_src
+*** PVC
+#+begin_src yaml
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: upload-pv-claim
+  namespace: demo-dev
+  labels:
+    app: upload-svc
+spec:
+  storageClassName: ebs-sc
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+#+end_src
+** NFS
+*** StorageClass
+#+begin_src yaml
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-csi
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.0.31
+  share: /upload/share
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+mountOptions:
+  - hard
+  - nfsvers=4.1
+#+end_src
+*** Sample PVC
+#+begin_src yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+  # namespace: demo-prod
+spec:
+  storageClassName: nfs-csi
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+#+end_src
+** Test with (whoami image)
+*** Deployment
+#+begin_src yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami
+  namespace: demo
+  labels:
+    app: whoami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whoami
+  template:
+    metadata:
+      labels:
+        app: whoami
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:latest
+#+end_src
+*** Service
+#+begin_src yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami
+  namespace: demo
+spec:
+  selector:
+    app: whoami
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+#+end_src
+*** Nginx Ingress
+**** Host Based Ingress
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whoami-ingress
+  namespace: demo
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: subdomain1.domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: whoami
+            port:
+              number: 80
+  - host: subdomain2.domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: another
+            port:
+              number: 8080
+#+end_src
+**** Path Based Ingress
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whoami-ingress
+  namespace: demo
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: whoami
+            port:
+              number: 80
+#+end_src

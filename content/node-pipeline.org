@@ -1,8 +1,8 @@
 * Node Pipeline
 
 
-* Preparation for creating a pipeline to auto-deploy a nodejs-application ec2-instances
-** On your development machine/instance
+** Preparation for creating a pipeline to auto-deploy a nodejs-application ec2-instances
+*** On your development machine/instance
 + install aws cli
 + create an IAM user, if you installed aws cli on your local machine
 + attach 'administrator privileges' policy to that user
@@ -10,7 +10,7 @@
 + run: aws configure
 + enter your access and secret key to start using aws cli as your IAM user
 
-** Make a S3 Bucket to store revisions of your code
+*** Make a S3 Bucket to store revisions of your code
 - make a s3 bucket via console or via cli like this:
 #+begin_src bash
 aws s3 mb s3://node-revisions-store --region us-east-1
@@ -20,7 +20,7 @@ aws s3 mb s3://node-revisions-store --region us-east-1
 aws s3api put-bucket-versioning --bucket node-revisions-store  --region us-east-1
 #+end_src
 
-*** Now, get your nodejs-code on this machine and :
+**** Now, get your nodejs-code on this machine and :
 + add an appspec.yml file:
 #+begin_src YAML
 version: 0.0
@@ -75,8 +75,8 @@ artifacts:
 
 #+end_src
 
-** install code-deploy agent on instances:
-*** On ubuntu/debian servers:
+*** install code-deploy agent on instances:
+**** On ubuntu/debian servers:
 #+begin_src bash
 #!/bin/bash
 BUCKET_NAME="aws-codedeploy-us-east-1"
@@ -91,7 +91,7 @@ sudo ./install auto
 sudo systemctl start codedeploy-agent
 #+end_src
 
-*** On Amazon Linux/Redhat servers:
+**** On Amazon Linux/Redhat servers:
 #+begin_src bash
 #!/bin/bash
 BUCKET_NAME="aws-codedeploy-us-east-1"
@@ -106,10 +106,10 @@ sudo ./install auto
 sudo service codedeploy-agent start
 #+end_src
 
-** Install nodejs on instances:
+*** Install nodejs on instances:
 
-*** AMI: ami-053b0d53c279acc90 ubuntu_ami
-*** On ubuntu servers:
+**** AMI: ami-053b0d53c279acc90 ubuntu_ami
+**** On ubuntu servers:
 #+begin_src bash
 #!/bin/bash
 sudo apt update
@@ -118,13 +118,13 @@ curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt install -y nodejs
 #+end_src
 
-*** add key through keyring if required
+**** add key through keyring if required
 #+begin_src
 curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | gpg --dearmor | tee /usr/share/keyrings/nodesource.gpg >/dev/null
 #+end_src
 
-* Blue-Green Deployment
-** Steps for Bluegreen Deployment:
+** Blue-Green Deployment
+*** Steps for Bluegreen Deployment:
 - Create an AMI with all dependencies:
   + For a node-app:
     - CodeDeploy Agent
@@ -141,7 +141,7 @@ curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | gpg --dearmor | t
 - Create an application on the AWS CodeDeploy console
   + Create a deployment Group in that application and select the ASG and ALB created earlier.
 
-** For Blue-green deployment using a launch template with ASG:
+*** For Blue-green deployment using a launch template with ASG:
 - On codeDeploy role, attach policy:
 - AWSCodeDeployRole
 - add this policy to avoid permission issue to the CodeDeploy role:
