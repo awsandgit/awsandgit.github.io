@@ -63,6 +63,45 @@ aws eks list-clusters --region us-east-1
 aws eks update-kubeconfig --name cluster-name --region us-east-1
 #+end_src
 
++ Find EKS ami id
+#+begin_src bash
+aws ssm get-parameter --name /aws/service/eks/optimized-ami/1.31/amazon-linux-2023/x86_64/standard/recommended/image_id \
+    --region us-west-2 --query "Parameter.Value" --output text
+#+end_src
+
++ AMI types available:
+  1. amazon-linux-2
+  2. amazon-linux-2-arm64
+  3. amazon-linux-2-gpu
+  4. amazon-linux-2023/x86_64/standard
+  5. amazon-linux-2023/arm64/standard
+  6. amazon-linux-2023/x86_64/nvidia
+  7. amazon-linux-2023/x86_64/neuron
+
++ For Terraform/OpenTofu
+  1. AL2_x86_64
+  2. AL2_x86_64_GPU
+  3. AL2_ARM_64
+  4. AL2023_x86_64_STANDARD
+  5. AL2023_x86_64_NVIDIA_STANDARD
+  6. AL2023_x86_64_NEURON_STANDARD
+  7. AL2023_ARM_64_STANDARD
+  8. CUSTOM
+  9. BOTTLEROCKET_ARM_64
+  10. BOTTLEROCKET_x86_64
+  11. BOTTLEROCKET_ARM_64_NVIDIA
+  12. BOTTLEROCKET_x86_64_NVIDIA
+  13. WINDOWS_CORE_2019_x86_64
+  14. WINDOWS_CORE_2022_x86_64
+  15. WINDOWS_FULL_2019_x86_64
+  16. WINDOWS_FULL_2022_x86_64
+
++ Max number of pods in a node
+  - https://github.com/awslabs/amazon-eks-ami/blob/main/templates/shared/runtime/eni-max-pods.txt
+  - https://docs.aws.amazon.com/eks/latest/userguide/choosing-instance-type.html#:~:text=Amazon%20EKS%20provides%20a%20script,determine%20the%20maximum%20Pods%20number.
+
+
+
 *** 2.3 Assume roles
 + Use aws sts command:
 #+begin_src bash

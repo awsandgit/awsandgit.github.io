@@ -1,0 +1,50 @@
+* UFW
+** Uncomplicated Firewall
+The default firewall configuration tool for Ubuntu is ufw. Developed to ease iptables firewall configuration, ufw provides a user friendly way to create an IPv4 or IPv6 host-based firewall. By default UFW is disabled.* Unified Firewall
+
+** Rules usage
+*** To check the status of UFW:
+#+begin_src bash
+sudo ufw status verbose
+#+end_src
+
+*** Allow all outbound by default
+#+begin_src bash
+ufw default allow outgoing
+#+end_src
+
+*** Deny all inbound by default
+#+begin_src bash
+ufw default deny incoming
+#+end_src
+
+*** Be sure to enable ssh first before enabling ufw
+#+begin_src bash
+ufw allow ssh
+#+end_src
+
+*** For custom ports
+#+begin_src bash
+ufw allow 443/tcp
+ufw deny 80/tcp
+#+end_src
+
+*** Allow access to a port from a specific IP
+#+begin_src bash
+ufw all from 172.25.0.0/24 to any port 22 from proto tcp
+#+end_src
+
+*** Priority of rules
+- if allow from all is present, it will be priortised and specific allow won't work
+
+*** Deleting rules
+#+begin_src bash
+ufw list numbered
+#get the rule number to delete and use below command to delete
+ufw delete 1
+#+end_src
+
+*** Turning logging off and on
+#+begin_src bash
+sudo ufw logging off
+#+end_src

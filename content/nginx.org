@@ -1,0 +1,184 @@
+* Nginx with Docker
+
+** Introduction
+nginx ("engine x") is an HTTP web server, reverse proxy, content cache, load balancer, TCP/UDP proxy server, and mail proxy server.
+** Configuration
+Use a modular approach like below:
++ general.conf contains general configuration
++ security.conf contains security-related configuration
++ nginx.conf contains main configuration and sources the other two configurations
++ nginx is ran on a non-privileged port 8080 to allow it run without sudo privileges
+
+*** General.conf v1 for static html pages
+#+begin_src conf
+# Allow only specific pages
+location = /terms.html {
+    allow all;
+}
+
+location = /privacy.html {
+    allow all;
+}
+
+# Explicitly block index.html
+location = /index.html {
+    return 403;
+}
+
+# Block everything else (this will catch any request not matched above)
+location / {
+    return 403;
+}
+
+# Serve a custom 403 Forbidden page
+error_page 403 /403.html;
+location = /403.html {
+    internal;
+    root /var/www/app/;  # Ensure this file exists in your web root
+}
+#+end_src
+
+*** General.conf v2 for static sites containing css, assets, fonts
+#+begin_src conf
+# favicon.ico
+location = /favicon.ico {
+     log_not_found off;
+     access_log off;
+}
+
+# robots.txt
+location = /robots.txt {
+     log_not_found off;
+     access_log off;
+}
+
+# assets, media
+location ~* \.(?:css(\.map)?|js(\.map)?|jpe?g|png|gif|ico|cur|heic|webp|tiff?|mp3|m4a|aac|ogg|midi?|wav|mp4|mov|webm|mpe?g|avi|ogv|flv|wmv)$ {
+     expires 7d;
+     access_log off;
+}
+
+# svg, fonts
+location ~* \.(?:svgz?|ttf|ttc|otf|eot|woff2?)$ {
+     add_header Access-Control-Allow-Origin "*";
+     expires 7d;
+     access_log off;
+}
+
+# gzip
+gzip on;
+gzip_vary on;
+gzip_proxied any;
+gzip_comp_level 6;
+gzip_types text/plain text/css text/xml application/json application/javascript application/rss+xml application/atom+xml image/svg+xml;
+#+end_src
+
+*** Security.conf
+#+begin_src conf
+# Security headers
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-XSS-Protection "1; mode=block" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "no-referrer-when-downgrade" always;
+add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+
+# Block access to hidden files except .well-known
+location ~ /\.(?!well-known) {
+    deny all;
+}
+#+end_src
+
+*** Nginx.conf
+#+begin_src conf
+pid /tmp/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    client_body_temp_path /tmp/client_temp;
+    proxy_temp_path       /tmp/proxy_temp_path;
+    fastcgi_temp_path     /tmp/fastcgi_temp;
+
+    uwsgi_temp_path       /tmp/uwsgi_temp;
+    scgi_temp_path        /tmp/scgi_temp;
+
+    server {
+        listen 8080;
+        server_name terms;
+        root /var/www/app;
+
+        include /etc/nginx/security.conf;
+        access_log /var/log/nginx/terms.access.log;
+        error_log /var/log/nginx/terms.error.log warn;
+
+        # location / {
+        #     try_files $uri $uri/ /403.html;
+        # }
+
+        include /etc/nginx/general.conf;
+    }
+}
+#+end_src
+
+*** Custom 403 page
+#+begin_src html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Access Denied</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+        h1 { color: #ff0000; }
+    </style>
+</head>
+<body>
+    <h1>403 - Forbidden</h1>
+    <p>Access to this page is restricted.</p>
+</body>
+</html>
+
+#+end_src
+
+*** Dockerfile
+#+begin_src Dockerfile
+FROM nginx:alpine
+WORKDIR /var/www/app
+COPY ./*.html /var/www/app/
+COPY ./.nginx/nginx.conf /etc/nginx/nginx.conf
+COPY ./.nginx/security.conf /etc/nginx/security.conf
+COPY ./.nginx/general.conf /etc/nginx/general.conf
+
+RUN chown -R nginx:nginx /var/www/app /var/log/nginx /tmp /etc/nginx
+
+#EXPOSE 8080
+
+USER nginx
+CMD ["nginx", "-g", "daemon off;"]
+#+end_src
+
+*** Nginx Controller Annotations for security enhancement and optimization
+#+begin_src yaml
+nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+nginx.ingress.kubernetes.io/enable-gzip: "true"
+nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+nginx.ingress.kubernetes.io/affinity: "cookie"
+nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+nginx.ingress.kubernetes.io/client-max-body-size: "100m"
+#This will take priority over modsecurity default rules, use either of them
+nginx.ingress.kubernetes.io/configuration-snippet: |
+  more_set_headers "server: hide";
+  more_set_headers "Content-Type: text/html; charset=UTF-8";
+  more_set_headers "X-Content-Type-Options: nosniff";
+  more_set_headers "X-Frame-Options: DENY";
+  more_set_headers "X-Xss-Protection: 0";
+  more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+  more_set_headers "Content-Security-Policy: default-src 'self' https://example.com";
+  more_set_headers "Cross-Origin-Resource-Policy: same-site";
+#+end_src
