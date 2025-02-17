@@ -28,3 +28,5 @@ Feel free to explore, learn, and hopefully find something here that helps you in
 19. [[file:eks-access-and-pod-identity.org][EKS Access and Pod Identity Association]]
 20. [[file:ebs-csi-driver.org][EBS CSI Driver and Postgres on EKS]]
 21. [[file:kubernetes.org][Deploy K8S on-premises]]
+22. [[file:nginx.org][Nginx with Docker]]
+23. [[file:ufw.org][UFW]]
