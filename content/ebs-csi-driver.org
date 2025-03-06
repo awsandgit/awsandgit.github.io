@@ -55,6 +55,9 @@ provisioner: ebs.csi.aws.com
 volumeBindingMode: WaitForFirstConsumer
 parameters:
   type: gp3
+  fsType: ext4
+  encrypted: "true"
+  #kmsKeyId: ""
 #+end_src
 - check storage classes
 #+begin_src bash

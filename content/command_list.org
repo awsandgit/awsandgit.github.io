@@ -31,6 +31,10 @@ kubectl get secret adminservice-secret -n node-staging -o jsonpath='{.data.\.env
 kubectl config get-contexts
 kubectl config use-context arn:aws:eks:us-east-1:111222333444:cluster/first-eks-cluster
 #+end_src
+*** 1.5 Patch a resource thats not deleting
+#+begin_src bash
+kubectl patch ingress <name-of-the-ingress> -n<your-namespace> -p '{"metadata":{"finalizers":[]}}' --type=merge
+#+end_src
 
 ** 2 AWS CLI
 *** 2.1 Basics
@@ -99,7 +103,6 @@ aws ssm get-parameter --name /aws/service/eks/optimized-ami/1.31/amazon-linux-20
 + Max number of pods in a node
   - https://github.com/awslabs/amazon-eks-ami/blob/main/templates/shared/runtime/eni-max-pods.txt
   - https://docs.aws.amazon.com/eks/latest/userguide/choosing-instance-type.html#:~:text=Amazon%20EKS%20provides%20a%20script,determine%20the%20maximum%20Pods%20number.
-
 
 
 *** 2.3 Assume roles
@@ -465,4 +468,31 @@ apt-mark hold gitlab-ce
 - show packages that are holded
 #+begin_src bash
 apt-mark showhold
+#+end_src
+** 7 SSH
+*** Connect to ssh if multiple identities are configured
+#+begin_src bash
+ssh -i ssh-key -o IdentitiesOnly=yes ubuntu@127.0.0.1
+#+end_src
+** 8 Helm
+*** Install via snap
+#+begin_src bash
+snap install helm --classic
+#+end_src
+*** Add a repo
+#+begin_src bash
+helm repo add <repo_name> <repo_url>
+helm repo update
+#+end_src
+*** Get Values used in the current release
+#+begin_src bash
+helm get values <release> -n <namespace>
+#+end_src
+*** Get default values from a chart
+#+begin_src bash
+helm show values <repo_name>/<chart_name>
+#+end_src
+*** Install a release
+#+begin_src bash
+helm install <release_name> <chart_name> --namespace <namespace> --create-namespace
 #+end_src
