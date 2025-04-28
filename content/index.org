@@ -30,3 +30,4 @@ Feel free to explore, learn, and hopefully find something here that helps you in
 21. [[file:kubernetes.org][Deploy K8S on-premises]]
 22. [[file:nginx.org][Nginx with Docker]]
 23. [[file:ufw.org][UFW]]
+24. [[file:codemagic.org][codemagic CI for android and iOS]]

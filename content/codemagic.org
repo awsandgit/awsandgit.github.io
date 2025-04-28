@@ -1,0 +1,372 @@
+* Codemagic CI
+** Introduction
+Codemagic CI/CD integrates with Azure DevOps, GitHub, GitLab, Bitbucket, and other self-hosted or cloud-based Git repositories. You push the code – and Codemagic takes care of building, testing, and distributing your app.
+** Predefined Environment Variables
+*** CM_BUILD_DIR
+This is where the your code repository is cloned
+*** BUILD_NUMBER
+This is the current counter for the numbers of builds executed in that Organization
+
+** Android-Native
+*** Create Variables
+**** Your android build name (e.g. com.sample.app)
+- $ANDROID_BUILD_ID
+
+**** For connecting and publishing to google playstore
+- Keys are needed in json format and need to have specific permissions
+https://docs.codemagic.io/yaml-publishing/google-play/#:~:text=To%20allow%20Codemagic%20to%20publish,account%20details%20and%20click%20Create.
+- $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
+
+**** For Sonar Integation
+- $SONAR_PROJECT_KEY
+- $SONAR_HOST_URL
+- $SONAR_TOKEN
+
+*** Android Signing
+- Generate and save your keystore file in the codemagic console
+#+begin_src bash
+keytool -genkeypair \
+  -alias my-key-alias \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000 \
+  -keystore my-release-key.keystore
+#+end_src
+
+*** Create a file named codemagic.yaml in your project root directory
+#+begin_src yaml
+workflows:
+  native-android:
+    name: sample-app-android-native
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      android_signing:
+        - keystore_ref
+      groups:
+        - google-play
+        - common
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: master
+          include: true
+          source: false
+    scripts:
+      - name: Set Android SDK location
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+
+      - name: Build Android Release
+        script: |
+          LATEST_GOOGLE_PLAY_BUILD_NUMBER=$(google-play get-latest-build-number --package-name "$ANDROID_BUILD_ID")
+          if [ -z "$LATEST_GOOGLE_PLAY_BUILD_NUMBER" ]; then
+            UPDATED_BUILD_NUMBER=$BUILD_NUMBER
+          else
+            UPDATED_BUILD_NUMBER=$(($LATEST_GOOGLE_PLAY_BUILD_NUMBER + 1))
+          fi
+          ./gradlew bundleRelease -PversionCode=$UPDATED_BUILD_NUMBER -PversionName=1.0.$UPDATED_BUILD_NUMBER
+          ./gradlew assembleRelease -PversionCode=$UPDATED_BUILD_NUMBER -PversionName=1.0.$UPDATED_BUILD_NUMBER
+
+      - name: Generate and upload code analysis report
+        script: |
+          echo $SONAR_HOST_URL
+          echo $SONAR_PROJECT_KEY
+          # ./gradlew lint --continue
+          ./gradlew jacocoTestReport
+          ls -al
+          sleep 10
+          ./gradlew sonar --info \
+            -Dproject.settings=sonar.properties \
+            -Dsonar.projectKey=$SONAR_PROJECT_KEY \
+            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.projectVersion=1.0.${BUILD_NUMBER} \
+            -Dsonar.coverage.exclusions="**/R.class,**/R$*.class,**/BuildConfig.*,**/Manifest*.*,**/*Test.*,android/**"
+
+    artifacts:
+      - app/build/outputs/**/*.aab
+      - app/build/outputs/**/*.apk
+    publishing:
+      email:
+        recipients:
+          - notify.me@gmail.com
+        notify:
+          success: true
+          failure: true
+      google_play:
+        credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
+        track: production #, production beta alpha internal
+        submit_as_draft: true
+#+end_src
+
+*** Publishing packages to maven repository
+- https://medium.com/@iRYO400/how-to-upload-your-android-library-to-maven-central-central-portal-in-2024-af7348742247
+
+** iOS Native
+*** Deploy to AppStore/Testflight
+**** Generate an API KEY from apple developer center
+- Reference: https://docs.codemagic.io/flutter-code-signing/ios-code-signing/#step-1-creating-an-app-store-api-key-for-codemagic/
+**** Go to Codemagic Console > Teams > Your Team Settings > Team Integrations(General Settings)
+- App Store Connect API key name
+- Issuer ID
+- Key ID
+- API key
+*** Create Variables
+**** Your iOS build name (e.g. com.sample.app)
+- $BUNDLE_ID
+**** App Workspace and Scheme Name
+- $SAMPLE_XCODE_WORKSPACE (e.g appname.xcworkspace)
+- $SAMPLE_XCODE_SCHEME (e.g appname)
+
+**** Apple Store ID (e.g 78348392)
+- $IOS_APP_STORE_ID
+**** iOS API Key name that was created earlier
+- $IOS_API_KEY_NAME
+**** For Sonar Integation
+- $SONAR_PROJECT_KEY
+- $SONAR_HOST_URL
+- $SONAR_TOKEN
+*** iOS Signing
+- Generate your iOS Signing certificate and provisioning profile from apple's developer center
+- Go to Codemagic Console > Teams > Team Settings > Signing Entities
+- Upload your iOS certificates and provisioning profile there and note down that reference name
+
+*** Sonar Integration
+**** If running the community version of sonar, install sonar-apple plugin
+- On your sonar server, install sonar-apple plugin and restart the server
+- https://github.com/insideapp-oss/sonar-apple
+**** Create a sonar.properties file
+#+begin_src bash
+# Source Configuration
+sonar.sources=appName
+sonar.tests=appTests
+
+sonar.swift.coverageType=branch
+# Build Wrapper Output Bypass
+sonar.cfamily.build-wrapper-output.bypass=true
+
+# Coverage Report Path
+sonar.coverageReportPaths=sonarqube-generic-coverage.xml
+
+# Disable Analysis for C, C++, and Objective-C Files
+sonar.c.file.suffixes=-
+sonar.cpp.file.suffixes=-
+sonar.objc.file.suffixes=-
+#+end_src
+**** Create a file named "xccov-to-sonarqube-generic.sh"
+#+begin_src bash
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+function convert_file {
+    local xccovarchive_file="$1"
+    local file_name="$2"
+    local xccov_options="$3"
+
+    echo "  <file path=\"$file_name\">"
+    xcrun xccov view $xccov_options --file "$file_name" "$xccovarchive_file" | sed -n \
+        -e 's/^ *\([0-9][0-9]*\): 0.*$/    <lineToCover lineNumber="\1" covered="false"\/>/p' \
+        -e 's/^ *\([0-9][0-9]*\): [1-9].*$/    <lineToCover lineNumber="\1" covered="true"\/>/p'
+    echo "  </file>"
+}
+
+function xccov_to_generic {
+    echo "<coverage version=\"1\">"
+
+    for xccovarchive_file in "$@"; do
+        if [[ ! -d $xccovarchive_file ]]; then
+            echo "Coverage FILE NOT FOUND AT PATH: $xccovarchive_file" >&2
+            exit 1
+        fi
+
+        local xccov_options=""
+        if [[ $xccovarchive_file == *.xcresult ]]; then
+            xccov_options="--archive"
+        fi
+
+        xcrun xccov view $xccov_options --file-list "$xccovarchive_file" | while read -r file_name; do
+            convert_file "$xccovarchive_file" "$file_name" "$xccov_options"
+        done
+    done
+
+    echo "</coverage>"
+}
+
+xccov_to_generic "$@"
+
+#+end_src
+
+*** Create a file named codemagic.yaml in your project's root directory
+**** Building the app and uploading to testflight
+#+begin_src yaml
+workflows:
+  ios-native-workflow:
+    name: sample-app-ios-native
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - sdk-ios
+        - common
+      ios_signing:
+        distribution_type: app_store #app_store , ad_hoc, development
+        bundle_identifier: $BUNDLE_ID
+      xcode: 16.2 #latest
+      cocoapods: default
+    triggering:
+        events:
+            - push
+            - pull_request
+        branch_patterns:
+            - pattern: feature_branch
+              include: true
+              source: false
+            - pattern: master
+              include: true
+              source: false
+    integrations:
+      app_store_connect: "$IOS_API_KEY_NAME"
+
+    scripts:
+      - name: Install CocoaPods dependencies
+        script: |
+          pod install
+      - name: Set up provisioning profiles settings on Xcode project
+        script: xcode-project use-profiles
+      - name: Increment build number
+        script: |
+          #!/bin/sh
+          cd $CM_BUILD_DIR
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$IOS_APP_STORE_ID")
+          agvtool new-version -all $(($LATEST_BUILD_NUMBER + 1))
+      - name: Build ipa for distribution
+        script: |
+          xcode-project build-ipa \
+            --workspace "$CM_BUILD_DIR/$SAMPLE_XCODE_WORKSPACE" \
+            --scheme "$SAMPLE_XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      email:
+        recipients:
+        - notify.me@gmail.com
+        notify:
+          success: true
+          failure: false
+      app_store_connect:
+        # Use referenced App Store Connect API key to authenticate binary upload
+        auth: integration
+        submit_to_testflight: true
+        expire_build_submitted_for_review: true
+
+        # # Specify the names of beta tester groups that will get access to the build.
+        # beta_groups:
+        #   - group name 1
+        #   - group name 2
+
+        submit_to_app_store: false
+        # cancel_previous_submissions: true
+        # # Optional, defaults to MANUAL. Supported values: MANUAL, AFTER_APPROVAL or SCHEDULED
+        # release_type: SCHEDULED
+        # earliest_release_date: 2021-12-01T14:00:00+00:00
+        # copyright: 2021 Nevercode Ltd
+        # phased_release: true
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/CocoaPods
+#+end_src
+**** Running the test and uploading the report to Sonar
+#+begin_src yaml
+workflows:
+  ios-native-workflow:
+    name: sdk-ios-native
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - sdk-ios
+        - common
+      ios_signing:
+        distribution_type: development # app_store, ad_hoc, development
+        bundle_identifier: $BUNDLE_ID
+      xcode: 16.2 # latest
+      cocoapods: default
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: master
+          include: true
+          source: false
+    scripts:
+      - name: Check variables
+        script: |
+          #!/bin/sh
+          set -ex
+          echo $CM_BUILD_DIR
+          echo $CM_BUILD_ID
+          pwd
+          ls -al
+      - name: Install Sonar Scanner
+        script: |
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install sonar-scanner
+      - name: Install CocoaPods dependencies
+        script: |
+          pod install
+      - name: Set up provisioning profiles settings on Xcode project
+        script: xcode-project use-profiles
+
+      - name: Generate debug build
+        script: |
+          set -o pipefail && xcodebuild \
+            -workspace "$CM_BUILD_DIR/$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.2" \
+            -derivedDataPath Build/ \
+            -enableCodeCoverage YES \
+            clean build test CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO | xcpretty || true
+      - name: Convert coverage report to Sonarqube format
+        script: |
+          ls -lah $CM_BUILD_DIR/Build/Logs/Test/
+          xcrun xccov view --report $CM_BUILD_DIR/Build/Logs/Test/*.xcresult
+          bash xccov-to-sonarqube-generic.sh Build/Logs/Test/*.xcresult > sonarqube-generic-coverage.xml
+      - name: Generate and upload code analysis report
+        script: |
+          export PATH=$PATH:$CM_BUILD_DIR/sonar-scanner/bin
+          sonar-scanner \
+            -Dproject.settings=sonar.properties \
+            -Dsonar.projectKey=$SONAR_PROJECT_KEY \
+            -Dsonar.host.url=$SONAR_HOST_URL \
+            -Dsonar.login=$SONAR_TOKEN \
+            -Dsonar.projectVersion=1.0.${CM_BUILD_ID}
+      - name: List build outputs
+        script: |
+          echo "Checking DerivedData directory..."
+          ls -alR build/ios
+          ls -alR
+    artifacts:
+      - /tmp/xcodebuild_logs/*.log
+      - $CM_BUILD_DIR/Build/Logs/Test/*.xcresult
+      - $CM_BUILD_DIR/sonarqube-generic-coverage.xml
+
+    publishing:
+      email:
+        recipients: ['notify.me@gmail.com']
+        notify:
+          success: true
+          failure: false
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/CocoaPods
+
+#+end_src
+*** Publishing packages to cocoapods repository
+- https://medium.com/swlh/automated-cocoapod-releases-with-github-actions-8526dd4535c7
