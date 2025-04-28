@@ -20,6 +20,10 @@
       org-html-head-include-default-style nil
       org-html-head
       (concat
+       "<link rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"assets/favicon/apple-touch-icon.png\">\n"
+       "<link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"assets/favicon/favicon-32x32.png\">\n"
+       "<link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"assets/favicon/favicon-16x16.png\">\n"
+       "<link rel=\"manifest\" href=\"assets/favicon/site.webmanifest\">\n"
        ;; "<link rel=\"stylesheet\" href=\"https://fniessen.github.io/org-html-themes/src/readtheorg_theme/css/htmlize.css\" />\n"
        ;; "<link rel=\"stylesheet\" href=\"https://fniessen.github.io/org-html-themes/src/readtheorg_theme/css/readtheorg.css\" />\n"
        ;; "<link rel=\"stylesheet\" href=\"https://fniessen.github.io/org-html-themes/src/readtheorg_theme/css/hideshow.css\" />\n"
