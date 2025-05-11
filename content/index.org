@@ -1,5 +1,6 @@
 * Personal Knowledge Library
 ** Introduction
+
 Hi there, and welcome to my Personal Knowledge Library! This is where I’ve gathered my notes, tips, and examples from my journey through DevOps, cloud infrastructure, and system configuration. It’s a space where I document what I’ve learned, so I can share it with others and have a reliable reference for myself.
 
 Here, you’ll find practical insights on tools and workflows I use regularly, like Kubernetes, Ansible, Jenkins, and GitLab CI/CD. Whether it’s setting up pipelines, managing infrastructure, or troubleshooting tricky issues, these notes reflect the challenges I’ve faced and the solutions that worked for me.
