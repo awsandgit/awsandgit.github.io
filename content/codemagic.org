@@ -2,25 +2,25 @@
 ** Introduction
 Codemagic CI/CD integrates with Azure DevOps, GitHub, GitLab, Bitbucket, and other self-hosted or cloud-based Git repositories. You push the code – and Codemagic takes care of building, testing, and distributing your app.
 ** Predefined Environment Variables
-*** CM_BUILD_DIR
+*** ~CM_BUILD_DIR~
 This is where the your code repository is cloned
-*** BUILD_NUMBER
+*** =BUILD_NUMBER=
 This is the current counter for the numbers of builds executed in that Organization
 
 ** Android-Native
 *** Create Variables
 **** Your android build name (e.g. com.sample.app)
-- $ANDROID_BUILD_ID
+- =$ANDROID_BUILD_ID=
 
 **** For connecting and publishing to google playstore
 - Keys are needed in json format and need to have specific permissions
 https://docs.codemagic.io/yaml-publishing/google-play/#:~:text=To%20allow%20Codemagic%20to%20publish,account%20details%20and%20click%20Create.
-- $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
+- =$GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS=
 
 **** For Sonar Integation
-- $SONAR_PROJECT_KEY
-- $SONAR_HOST_URL
-- $SONAR_TOKEN
+- ~$SONAR_PROJECT_KEY~
+- ~$SONAR_HOST_URL~
+- ~$SONAR_TOKEN~
 
 *** Android Signing
 - Generate and save your keystore file in the codemagic console
@@ -115,19 +115,19 @@ workflows:
 - API key
 *** Create Variables
 **** Your iOS build name (e.g. com.sample.app)
-- $BUNDLE_ID
+- =$BUNDLE_ID=
 **** App Workspace and Scheme Name
-- $SAMPLE_XCODE_WORKSPACE (e.g appname.xcworkspace)
-- $SAMPLE_XCODE_SCHEME (e.g appname)
+- =$SAMPLE_XCODE_WORKSPACE= (e.g appname.xcworkspace)
+- =$SAMPLE_XCODE_SCHEME= (e.g appname)
 
 **** Apple Store ID (e.g 78348392)
-- $IOS_APP_STORE_ID
+- =$IOS_APP_STORE_ID=
 **** iOS API Key name that was created earlier
-- $IOS_API_KEY_NAME
+- =$IOS_API_KEY_NAME=
 **** For Sonar Integation
-- $SONAR_PROJECT_KEY
-- $SONAR_HOST_URL
-- $SONAR_TOKEN
+- =$SONAR_PROJECT_KEY=
+- =$SONAR_HOST_URL=
+- =$SONAR_TOKEN=
 *** iOS Signing
 - Generate your iOS Signing certificate and provisioning profile from apple's developer center
 - Go to Codemagic Console > Teams > Team Settings > Signing Entities
